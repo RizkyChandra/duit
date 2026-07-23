@@ -534,12 +534,10 @@ func recomputeCmd() *cobra.Command {
 				}
 			}
 			for _, n := range names {
-				bal, err := store.Recompute(n)
-				if err != nil {
+				if _, err := store.Recompute(n); err != nil {
 					return err
 				}
 				fmt.Printf("%s: recomputed\n", n)
-				_ = bal
 			}
 			commit(c, "recompute balances")
 			return nil

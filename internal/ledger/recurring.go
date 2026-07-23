@@ -146,6 +146,9 @@ func (r Recurring) dueDates(until time.Time) []string {
 		if haveLast && !occ.After(last) { // occ <= lastApplied: already applied
 			continue
 		}
+		if !haveLast && occ.Before(start) { // a monthly Day earlier than Start's day
+			continue
+		}
 		out = append(out, occ.Format(dateLayout))
 	}
 	return out
@@ -178,30 +181,33 @@ func (s *Store) ApplyRecurring(until string) (int, error) {
 	if len(jobs) == 0 {
 		return 0, nil
 	}
+	// Persist LastApplied after each successful job so a mid-run failure (e.g. a
+	// cross-currency transfer with no FX rate) never replays completed jobs as
+	// duplicates on retry. ponytail: one recurring.json write per job — fine at
+	// personal scale; batch if a huge catch-up ever gets slow.
+	created := 0
 	for _, j := range jobs {
 		r := rules[j.idx]
+		var jerr error
 		if r.To != "" {
 			amt := r.Amount
 			if amt < 0 {
 				amt = -amt
 			}
-			if _, _, err := s.Transfer(r.Account, r.To, amt, nil, j.date, r.Note); err != nil {
-				return 0, err
-			}
-		} else if _, err := s.AddTransaction(r.Account, Transaction{
-			Date:     j.date,
-			Amount:   r.Amount,
-			Category: r.Category,
-			Note:     r.Note,
-		}); err != nil {
-			return 0, err
+			_, _, jerr = s.Transfer(r.Account, r.To, amt, nil, j.date, r.Note)
+		} else {
+			_, jerr = s.AddTransaction(r.Account, Transaction{
+				Date: j.date, Amount: r.Amount, Category: r.Category, Note: r.Note,
+			})
 		}
-		rules[j.idx].LastApplied = j.date // jobs are appended in chronological order per rule
+		if jerr != nil {
+			return created, jerr // completed jobs already persisted below
+		}
+		created++
+		rules[j.idx].LastApplied = j.date // jobs are appended chronologically per rule
+		if err := s.SaveRecurring(rules); err != nil {
+			return created, err
+		}
 	}
-	unlock, err := s.lock()
-	if err != nil {
-		return len(jobs), err
-	}
-	defer unlock()
-	return len(jobs), s.SaveRecurring(rules)
+	return created, nil
 }

@@ -34,12 +34,14 @@ func ParseMoney(s string, decimals int) (Money, error) {
 	if len(fracPart) > decimals {
 		return 0, errBadMoney
 	}
-	fracPart += strings.Repeat("0", decimals-len(fracPart))
-	digits := intPart + fracPart
-	if digits == "" {
+	// Reject anything that isn't purely digits in the integer and fraction parts:
+	// this catches "-", "+", ".", and embedded signs like "+-5" that strconv would
+	// otherwise silently accept as 0 or a sign-flipped value.
+	if !allDigits(intPart) || !allDigits(fracPart) || intPart+fracPart == "" {
 		return 0, errBadMoney
 	}
-	n, err := strconv.ParseInt(digits, 10, 64)
+	fracPart += strings.Repeat("0", decimals-len(fracPart))
+	n, err := strconv.ParseInt(intPart+fracPart, 10, 64)
 	if err != nil {
 		return 0, errBadMoney
 	}
@@ -50,22 +52,33 @@ func ParseMoney(s string, decimals int) (Money, error) {
 }
 
 // Format renders Money with `decimals` fractional digits, e.g. 1234 -> "12.34".
+// It formats the magnitude as a digit string (never negating the int64) so it is
+// correct even at math.MinInt64.
 func (m Money) Format(decimals int) string {
-	n := int64(m)
-	sign := ""
-	if n < 0 {
-		sign, n = "-", -n
+	s := strconv.FormatInt(int64(m), 10)
+	if decimals <= 0 {
+		return s
 	}
-	if decimals == 0 {
-		return sign + strconv.FormatInt(n, 10)
+	neg := strings.HasPrefix(s, "-")
+	if neg {
+		s = s[1:]
 	}
-	scale := int64(1)
-	for i := 0; i < decimals; i++ {
-		scale *= 10
+	for len(s) <= decimals { // ensure at least one leading digit before the point
+		s = "0" + s
 	}
-	frac := strconv.FormatInt(n%scale, 10)
-	if len(frac) < decimals {
-		frac = strings.Repeat("0", decimals-len(frac)) + frac
+	point := len(s) - decimals
+	out := s[:point] + "." + s[point:]
+	if neg {
+		out = "-" + out
 	}
-	return sign + strconv.FormatInt(n/scale, 10) + "." + frac
+	return out
+}
+
+func allDigits(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
 }

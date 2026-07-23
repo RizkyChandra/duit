@@ -114,10 +114,37 @@ Tracked at [Project #5](https://github.com/users/RizkyChandra/projects/5/views/1
 - [x] v0.7.0 — category management (`category add/list/rename/rm`; rename migrates existing transactions, splits, and budgets)
 - [x] v0.8.0 — recurring transfers (`recurring add --to`) · TUI dashboard (`D`) · account archiving (`account archive`)
 - [x] v0.9.0 — tags (`--tag`, `find --tag`) · CLI `edit`/`rm` · `verify` integrity check · scriptability (`--json`, `config`, shell completions)
+- [x] v1.0.0 — stabilization: path-traversal guard, money-parser hardening (fuzzed), recurring idempotency, MCP/CLI summary parity, security & correctness audit, docs
 
-### Planned
+## Data, privacy & security
 
-- **v1.0.0** — stabilization: hardening, docs, and a stable release
+- **Where things live:** accounts/transactions JSON in your data dir (a git repo,
+  default `~/.local/share/duit`). App config lives at `~/.config/duit/config.json`
+  — **outside** the repo, mode `0600` — so your token is never committed. JSON files
+  and receipts are written `0600`.
+- **Money** is integer minor units end to end — no floating-point drift (fuzz-tested).
+- **Token:** stored in your OS keychain when available (Secret Service / macOS
+  Keychain / Windows Credential Manager), falling back to the `0600` config file on
+  headless systems. Used only for HTTPS push — never printed or committed.
+- **Git** is embedded (go-git, no shelling out); SSH host-key verification stays on.
+  Account names are validated so ledger data pulled from a remote can't escape the
+  data directory.
+- **Integrity:** `duit verify` audits cached balances, running totals, and split
+  sums against the transaction files; `--fix` repairs drift by recomputing.
+
+## Scripting
+
+Read commands accept a global `--json` flag (`balance`, `list`, `find`, `summary`,
+`verify`, `config`) for machine-readable output. Shell completions:
+`duit completion bash|zsh|fish`.
+
+## Development
+
+```sh
+go build ./cmd/duit
+go test ./...
+go test -fuzz=FuzzParseMoney ./internal/ledger   # fuzz the money parser
+```
 
 ## License
 

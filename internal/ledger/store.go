@@ -35,15 +35,38 @@ func (s *Store) LoadAccounts() ([]Account, error) {
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
-	return accts, err
+	if err != nil {
+		return accts, err
+	}
+	// Fail closed if the registry (possibly pulled from a remote) contains a name
+	// that would escape the data dir when turned into a path.
+	for _, a := range accts {
+		if verr := validAccountName(a.Name); verr != nil {
+			return nil, fmt.Errorf("refusing to load accounts.json: %w", verr)
+		}
+	}
+	return accts, nil
 }
 
 func (s *Store) SaveAccounts(accts []Account) error {
 	return writeJSON(s.accountsPath(), accts)
 }
 
+// validAccountName rejects names that aren't a single clean path element, so an
+// account name can never escape the data dir when used to build a file path
+// (defends against both a typo'd `../` name and a hostile remote's accounts.json).
+func validAccountName(name string) error {
+	if name == "" || name == "." || name == ".." || name != filepath.Base(name) || strings.ContainsAny(name, `/\`) {
+		return fmt.Errorf("invalid account name %q (no path separators or ..)", name)
+	}
+	return nil
+}
+
 // AddAccount appends a, erroring if the name is already taken.
 func (s *Store) AddAccount(a Account) error {
+	if err := validAccountName(a.Name); err != nil {
+		return err
+	}
 	unlock, err := s.lock()
 	if err != nil {
 		return err

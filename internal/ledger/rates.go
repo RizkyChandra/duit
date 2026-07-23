@@ -35,7 +35,7 @@ func (r Rates) Convert(amount Money, from, to string) (Money, error) {
 		return 0, fmt.Errorf("no exchange rate for %s", from)
 	}
 	rt, ok := r.rate(to)
-	if !ok {
+	if !ok || rt == 0 {
 		return 0, fmt.Errorf("no exchange rate for %s", to)
 	}
 	valFrom := float64(amount) / math.Pow10(CurrencyDecimals(from)) // decimal value in `from`

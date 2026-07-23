@@ -182,20 +182,25 @@ func writeSummary(b *strings.Builder, txns []ledger.Transaction, decimals int) {
 	byCat := map[string]*totals{}
 	var order []string
 	for _, t := range txns {
-		cat := t.Category
-		if cat == "" {
-			cat = "(uncategorized)"
+		if t.Transfer != "" {
+			continue // transfers are not income/expense
 		}
-		tot, ok := byCat[cat]
-		if !ok {
-			tot = &totals{}
-			byCat[cat] = tot
-			order = append(order, cat)
-		}
-		if t.Amount >= 0 {
-			tot.income += t.Amount
-		} else {
-			tot.expense += t.Amount // negative
+		for _, ln := range t.Lines() { // attribute split parts to their own categories
+			cat := ln.Category
+			if cat == "" {
+				cat = "(uncategorized)"
+			}
+			tot, ok := byCat[cat]
+			if !ok {
+				tot = &totals{}
+				byCat[cat] = tot
+				order = append(order, cat)
+			}
+			if ln.Amount >= 0 {
+				tot.income += ln.Amount
+			} else {
+				tot.expense += ln.Amount // negative
+			}
 		}
 	}
 	sort.Strings(order)
