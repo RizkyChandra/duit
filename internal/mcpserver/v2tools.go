@@ -79,6 +79,46 @@ func (h handlers) applyRecurring(_ context.Context, _ *mcp.CallToolRequest, in a
 	return text(fmt.Sprintf("applied %d recurring transaction(s) up to %s", n, until)), nil, nil
 }
 
+type netWorthArgs struct {
+	In string `json:"in,omitempty" jsonschema:"target currency, defaults to the rate table's base"`
+}
+
+func (h handlers) netWorth(_ context.Context, _ *mcp.CallToolRequest, in netWorthArgs) (*mcp.CallToolResult, any, error) {
+	rates, err := h.store.LoadRates()
+	if err != nil {
+		return nil, nil, err
+	}
+	target := strings.ToUpper(in.In)
+	if target == "" {
+		target = rates.Base
+	}
+	if target == "" {
+		return nil, nil, fmt.Errorf("no target currency; set fx rates or pass `in`")
+	}
+	accts, err := h.store.LoadAccounts()
+	if err != nil {
+		return nil, nil, err
+	}
+	dec := ledger.CurrencyDecimals(target)
+	var total ledger.Money
+	var missing []string
+	var b strings.Builder
+	for _, a := range accts {
+		conv, err := rates.Convert(a.Balance, a.Currency, target)
+		if err != nil {
+			missing = append(missing, a.Currency)
+			continue
+		}
+		total += conv
+		fmt.Fprintf(&b, "%s\t%s %s = %s %s\n", a.Name, a.Balance.Format(a.Decimals), a.Currency, conv.Format(dec), target)
+	}
+	fmt.Fprintf(&b, "TOTAL\t%s %s", total.Format(dec), target)
+	if len(missing) > 0 {
+		fmt.Fprintf(&b, "\n(no rate for: %s)", strings.Join(missing, ", "))
+	}
+	return text(b.String()), nil, nil
+}
+
 // budgetDecimals infers decimal precision for budget amounts from the first
 // account (budgets are single-currency until v0.3 FX), defaulting to 2.
 func budgetDecimals(store *ledger.Store) int {

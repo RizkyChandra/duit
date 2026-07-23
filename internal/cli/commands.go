@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"sort"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -256,7 +257,7 @@ func balanceCmd() *cobra.Command {
 }
 
 func summaryCmd() *cobra.Command {
-	var account, month string
+	var account, month, in string
 	cmd := &cobra.Command{
 		Use:   "summary",
 		Short: "Income/expense/net per category for a month",
@@ -273,9 +274,18 @@ func summaryCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			// Assume one currency/decimals for the summary display (personal use);
-			// fall back to 2 decimals if accounts disagree.
+			// Assume one currency/decimals for the display (personal use); fall
+			// back to 2 if accounts disagree. With --in, convert every amount to
+			// that currency so cross-currency accounts combine correctly.
 			decimals := 2
+			var rates ledger.Rates
+			if in != "" {
+				in = strings.ToUpper(in)
+				decimals = ledger.CurrencyDecimals(in)
+				if rates, err = store.LoadRates(); err != nil {
+					return err
+				}
+			}
 			type tot struct{ in, out ledger.Money }
 			cats := map[string]*tot{}
 			var totIn, totOut ledger.Money
@@ -283,12 +293,22 @@ func summaryCmd() *cobra.Command {
 				if account != "" && a.Name != account {
 					continue
 				}
-				decimals = a.Decimals
+				if in == "" {
+					decimals = a.Decimals
+				}
 				txns, err := store.Transactions(a.Name, month)
 				if err != nil {
 					return err
 				}
 				for _, t := range txns {
+					amt := t.Amount
+					if in != "" && a.Currency != in {
+						conv, err := rates.Convert(amt, a.Currency, in)
+						if err != nil {
+							return fmt.Errorf("cannot convert %s to %s: %w (set a rate with `duit fx set`)", a.Currency, in, err)
+						}
+						amt = conv
+					}
 					key := t.Category
 					if key == "" {
 						key = "(uncategorized)"
@@ -296,12 +316,12 @@ func summaryCmd() *cobra.Command {
 					if cats[key] == nil {
 						cats[key] = &tot{}
 					}
-					if t.Amount >= 0 {
-						cats[key].in += t.Amount
-						totIn += t.Amount
+					if amt >= 0 {
+						cats[key].in += amt
+						totIn += amt
 					} else {
-						cats[key].out += t.Amount
-						totOut += t.Amount
+						cats[key].out += amt
+						totOut += amt
 					}
 				}
 			}
@@ -311,7 +331,11 @@ func summaryCmd() *cobra.Command {
 			}
 			sort.Strings(keys)
 			w := tw()
-			fmt.Fprintf(w, "Summary %s\n", month)
+			title := "Summary " + month
+			if in != "" {
+				title += " (in " + in + ")"
+			}
+			fmt.Fprintln(w, title)
 			fmt.Fprintln(w, "CATEGORY\tINCOME\tEXPENSE\tNET")
 			for _, k := range keys {
 				c := cats[k]
@@ -325,6 +349,7 @@ func summaryCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&account, "account", "", "limit to one account")
 	cmd.Flags().StringVar(&month, "month", "", "month YYYY-MM (default current)")
+	cmd.Flags().StringVar(&in, "in", "", "convert all amounts to this currency (needs fx rates)")
 	return cmd
 }
 

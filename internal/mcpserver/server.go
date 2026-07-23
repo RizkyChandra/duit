@@ -31,6 +31,7 @@ func newServer(store *ledger.Store) *mcp.Server {
 	mcp.AddTool(s, &mcp.Tool{Name: "budget_status", Description: "Per-category budget: spent vs limit for a month."}, h.budgetStatus)
 	mcp.AddTool(s, &mcp.Tool{Name: "list_recurring", Description: "List recurring transaction rules."}, h.listRecurring)
 	mcp.AddTool(s, &mcp.Tool{Name: "apply_recurring", Description: "Materialize recurring rules due up to a date (default today)."}, h.applyRecurring)
+	mcp.AddTool(s, &mcp.Tool{Name: "net_worth", Description: "Total balance across accounts converted to one currency."}, h.netWorth)
 	return s
 }
 

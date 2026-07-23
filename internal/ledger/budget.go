@@ -91,7 +91,10 @@ type BudgetLine struct {
 
 // BudgetStatus reports each budget's spending for month (YYYY-MM). Spent is the
 // positive magnitude of EXPENSE transactions (negative amounts) in that category,
-// summed across all accounts. Lines are sorted by Category.
+// summed across all accounts. When a rates.json table exists, each account's
+// spend is converted to the base currency before summing (so cross-currency
+// budgets are correct); otherwise raw amounts are summed (single-currency).
+// Lines are sorted by Category.
 func (s *Store) BudgetStatus(month string) ([]BudgetLine, error) {
 	budgets, err := s.LoadBudgets()
 	if err != nil {
@@ -101,7 +104,13 @@ func (s *Store) BudgetStatus(month string) ([]BudgetLine, error) {
 	if err != nil {
 		return nil, err
 	}
-	// spent[category] = -sum(negative amounts) across all accounts for month.
+	rates, err := s.LoadRates()
+	if err != nil {
+		return nil, err
+	}
+	target := rates.Base
+	// spent[category] = -sum(negative amounts) across all accounts for month,
+	// converted to the base currency when a rate table is present.
 	spent := make(map[string]Money)
 	for _, a := range accts {
 		txns, err := s.Transactions(a.Name, month)
@@ -109,9 +118,16 @@ func (s *Store) BudgetStatus(month string) ([]BudgetLine, error) {
 			return nil, err
 		}
 		for _, t := range txns {
-			if t.Amount < 0 {
-				spent[t.Category] -= t.Amount
+			if t.Amount >= 0 {
+				continue
 			}
+			mag := -t.Amount
+			if target != "" && a.Currency != target {
+				if conv, err := rates.Convert(mag, a.Currency, target); err == nil {
+					mag = conv // best-effort: fall back to raw magnitude if no rate
+				}
+			}
+			spent[t.Category] += mag
 		}
 	}
 	lines := make([]BudgetLine, 0, len(budgets))
