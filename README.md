@@ -88,6 +88,11 @@ Tracked at [Project #5](https://github.com/users/RizkyChandra/projects/5/views/1
 - [x] R6 — TUI
 - [x] R7 — Polish
 
+### Planned
+
+- **v0.2.0** — OS-keychain PAT storage · per-category monthly budgets (warn-only) · recurring transactions (explicit `apply`)
+- **v0.3.0** — multi-currency conversion (manual rate table + optional `fx update`), net worth, currency-aware summary/budgets
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
