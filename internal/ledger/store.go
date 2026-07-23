@@ -142,6 +142,38 @@ func (s *Store) AddTransaction(account string, t Transaction) (Transaction, erro
 	return t, nil
 }
 
+// RemoveTransaction deletes the transaction with id from an account's month
+// file, then recomputes balances. Editing = RemoveTransaction + AddTransaction.
+func (s *Store) RemoveTransaction(account, month, id string) error {
+	unlock, err := s.lock()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	mf, err := s.LoadMonth(account, month)
+	if err != nil {
+		return err
+	}
+	out := mf.Transactions[:0:0]
+	found := false
+	for _, t := range mf.Transactions {
+		if t.ID == id {
+			found = true
+			continue
+		}
+		out = append(out, t)
+	}
+	if !found {
+		return fmt.Errorf("transaction %q not found in %s", id, month)
+	}
+	mf.Transactions = out
+	if err := writeJSON(s.monthPath(account, month), mf); err != nil {
+		return err
+	}
+	_, err = s.recompute(account)
+	return err
+}
+
 // Recompute rebuilds every month's opening/closing running balance and the
 // account's cached balance from the transaction files, returning the balance.
 func (s *Store) Recompute(account string) (Money, error) {

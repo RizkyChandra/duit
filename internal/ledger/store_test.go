@@ -34,3 +34,31 @@ func TestAddAndRecompute(t *testing.T) {
 		t.Errorf("Recompute = %d,%v want 7500,nil", bal, err)
 	}
 }
+
+func TestRemoveTransaction(t *testing.T) {
+	s := &Store{Dir: t.TempDir()}
+	if err := s.AddAccount(Account{Name: "cash", Currency: "USD", Decimals: 2}); err != nil {
+		t.Fatal(err)
+	}
+	kept, err := s.AddTransaction("cash", Transaction{Date: "2026-03-01", Amount: 1000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	drop, err := s.AddTransaction("cash", Transaction{Date: "2026-03-02", Amount: 400})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RemoveTransaction("cash", "2026-03", drop.ID); err != nil {
+		t.Fatal(err)
+	}
+	txns, _ := s.Transactions("cash", "2026-03")
+	if len(txns) != 1 || txns[0].ID != kept.ID {
+		t.Errorf("after remove, txns = %+v want only %s", txns, kept.ID)
+	}
+	if acct, _, _ := s.Account("cash"); acct.Balance != 1000 {
+		t.Errorf("balance = %d want 1000", acct.Balance)
+	}
+	if err := s.RemoveTransaction("cash", "2026-03", "nope"); err == nil {
+		t.Error("removing missing id should error")
+	}
+}
