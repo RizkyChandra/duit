@@ -118,16 +118,21 @@ func (s *Store) BudgetStatus(month string) ([]BudgetLine, error) {
 			return nil, err
 		}
 		for _, t := range txns {
-			if t.Amount >= 0 || t.Transfer != "" {
-				continue // income and transfer legs are not spending
+			if t.Transfer != "" {
+				continue // transfer legs are not spending
 			}
-			mag := -t.Amount
-			if target != "" && a.Currency != target {
-				if conv, err := rates.Convert(mag, a.Currency, target); err == nil {
-					mag = conv // best-effort: fall back to raw magnitude if no rate
+			for _, ln := range t.Lines() {
+				if ln.Amount >= 0 {
+					continue // income is not spending
 				}
+				mag := -ln.Amount
+				if target != "" && a.Currency != target {
+					if conv, err := rates.Convert(mag, a.Currency, target); err == nil {
+						mag = conv // best-effort: fall back to raw magnitude if no rate
+					}
+				}
+				spent[ln.Category] += mag
 			}
-			spent[t.Category] += mag
 		}
 	}
 	lines := make([]BudgetLine, 0, len(budgets))

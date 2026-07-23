@@ -42,9 +42,10 @@ duit mcp                        # MCP server over stdio
 | `init` | Create data dir + git repo + config (data dir, currency, remote, auth) |
 | `account add\|list\|rm` | Manage accounts (`rm` needs `--yes`) |
 | `income \| expense <acct> <amount>` | Record money (positive magnitude; direction by verb) |
-| `add <acct> <amount>` | Signed add (positive = income). For a negative literal use `expense` instead |
+| `add <acct> <amount>` | Signed add (positive = income). For a negative literal use `expense` instead. `--split cat=amt` splits across categories |
 | `transfer <from> <to> <amount>` | Move money between accounts (linked pair, excluded from income/expense; cross-currency auto-converts, `--dest-amount` overrides) |
 | `list <acct> [--month]` | Transactions for a month |
+| `find [text] [--account --category --type --min --max --from --to --month]` | Search transactions across all accounts/months |
 | `balance [acct]` | Balance(s) |
 | `summary [--account] [--month]` | Per-category income/expense/net |
 | `recompute [acct]` | Rebuild cached balances from transaction files |
@@ -55,6 +56,7 @@ duit mcp                        # MCP server over stdio
 | `report [--month] [--in CODE]` / `report trend [--months N]` / `report networth [--months N]` | In-terminal bar charts: category breakdown, monthly expense trend, net-worth-over-time |
 | `export [--account] [--from --to] [--out]` | Write transactions to CSV |
 | `import <account> <file>` | Import a CSV (auto-detects date/amount/debit/credit/category headers; `--dry-run`, override flags) |
+| `attach <id> <file>` / `receipt <id>` | Attach a receipt to a transaction / print its stored path |
 | `auth set-token\|migrate` | Manage the GitHub PAT (stored in the OS keychain, falls back to config file) |
 | `sync` | Commit pending + pull + push |
 | `mcp` | Run the MCP stdio server |
@@ -64,7 +66,8 @@ duit mcp                        # MCP server over stdio
 
 `duit mcp` speaks MCP over stdio and exposes: `list_accounts`, `get_balance`,
 `add_transaction`, `list_transactions`, `summary`, `budget_status`,
-`list_recurring`, `apply_recurring`, `net_worth`. Register it with an MCP client, e.g.:
+`list_recurring`, `apply_recurring`, `net_worth`, `find_transactions`, `transfer`.
+Register it with an MCP client, e.g.:
 
 ```json
 { "mcpServers": { "duit": { "command": "duit", "args": ["mcp"] } } }
@@ -102,6 +105,11 @@ Tracked at [Project #5](https://github.com/users/RizkyChandra/projects/5/views/1
 - [x] v0.3.0 — multi-currency conversion (manual rate table + `fx update`), net worth, currency-aware summary/budgets
 - [x] v0.4.0 — CSV import/export · terminal reports (`report`, `report trend`) · TUI budget & fx screens (`b`/`f`)
 - [x] v0.5.0 — transfers between accounts · net-worth-over-time (`report networth`) · TUI transfer (`t`) + editable budget/fx screens
+- [x] v0.6.0 — search/filter (`find`) · split transactions (`--split`) · receipts (`attach`/`receipt`) · MCP `find_transactions` + `transfer`
+
+### Planned
+
+- **v0.7.0** — category management (`category add/list/rename/rm`, rename migrates existing transactions)
 
 ## License
 

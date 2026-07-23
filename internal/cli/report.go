@@ -63,22 +63,27 @@ func reportCmd() *cobra.Command {
 					return err
 				}
 				for _, t := range txns {
-					if t.Amount >= 0 || t.Transfer != "" {
-						continue // expenses only; transfers are not spending
+					if t.Transfer != "" {
+						continue // transfers are not spending
 					}
-					amt := -t.Amount // magnitude
-					if in != "" && a.Currency != in {
-						conv, err := rates.Convert(t.Amount, a.Currency, in)
-						if err != nil {
-							return fmt.Errorf("cannot convert %s to %s: %w (set a rate with `duit fx set`)", a.Currency, in, err)
+					for _, ln := range t.Lines() {
+						if ln.Amount >= 0 {
+							continue // expenses only
 						}
-						amt = -conv
+						amt := -ln.Amount // magnitude
+						if in != "" && a.Currency != in {
+							conv, err := rates.Convert(ln.Amount, a.Currency, in)
+							if err != nil {
+								return fmt.Errorf("cannot convert %s to %s: %w (set a rate with `duit fx set`)", a.Currency, in, err)
+							}
+							amt = -conv
+						}
+						key := ln.Category
+						if key == "" {
+							key = "(uncategorized)"
+						}
+						cats[key] += amt
 					}
-					key := t.Category
-					if key == "" {
-						key = "(uncategorized)"
-					}
-					cats[key] += amt
 				}
 			}
 

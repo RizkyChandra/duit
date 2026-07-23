@@ -128,6 +128,7 @@ func addCmd() *cobra.Command {
 // +1 forces income (positive magnitude); -1 forces expense (negative magnitude).
 func signedAddCmd(use string, sign int, short string) *cobra.Command {
 	var category, note, date string
+	var splitSpecs []string
 	cmd := &cobra.Command{
 		Use:   use + " <account> <amount>",
 		Short: short,
@@ -157,8 +158,12 @@ func signedAddCmd(use string, sign int, short string) *cobra.Command {
 			if date == "" {
 				date = today()
 			}
+			splits, err := parseSplits(splitSpecs, amt, acct.Decimals)
+			if err != nil {
+				return err
+			}
 			t, err := store.AddTransaction(acct.Name, ledger.Transaction{
-				Date: date, Amount: amt, Category: category, Note: note,
+				Date: date, Amount: amt, Category: category, Note: note, Splits: splits,
 			})
 			if err != nil {
 				return err
@@ -168,8 +173,10 @@ func signedAddCmd(use string, sign int, short string) *cobra.Command {
 			fmt.Printf("Recorded %s %s (%s). Balance: %s %s\n",
 				amt.Format(acct.Decimals), acct.Currency, t.ID,
 				acct.Balance.Format(acct.Decimals), acct.Currency)
-			if amt < 0 && t.Category != "" {
-				warnOverBudget(store, c, t.Category, t.Date[:7])
+			if amt < 0 {
+				for _, cat := range affectedCategories(t) {
+					warnOverBudget(store, c, cat, t.Date[:7])
+				}
 			}
 			return nil
 		},
@@ -177,7 +184,55 @@ func signedAddCmd(use string, sign int, short string) *cobra.Command {
 	cmd.Flags().StringVar(&category, "category", "", "category")
 	cmd.Flags().StringVar(&note, "note", "", "note")
 	cmd.Flags().StringVar(&date, "date", "", "date YYYY-MM-DD (default today)")
+	cmd.Flags().StringArrayVar(&splitSpecs, "split", nil, "split part category=amount (repeatable; must sum to the amount)")
 	return cmd
+}
+
+// parseSplits turns "category=amount" specs into splits whose sign matches the
+// transaction amount. The caller's AddTransaction validates that they sum to it.
+func parseSplits(specs []string, amt ledger.Money, decimals int) ([]ledger.Split, error) {
+	if len(specs) == 0 {
+		return nil, nil
+	}
+	neg := amt < 0
+	splits := make([]ledger.Split, 0, len(specs))
+	for _, spec := range specs {
+		name, valStr, ok := strings.Cut(spec, "=")
+		name = strings.TrimSpace(name)
+		if !ok || name == "" {
+			return nil, fmt.Errorf("bad --split %q (want category=amount)", spec)
+		}
+		mag, err := ledger.ParseMoney(strings.TrimSpace(valStr), decimals)
+		if err != nil {
+			return nil, fmt.Errorf("bad --split amount in %q: %w", spec, err)
+		}
+		if mag < 0 {
+			return nil, fmt.Errorf("--split amounts must be positive magnitudes: %q", spec)
+		}
+		if neg {
+			mag = -mag
+		}
+		splits = append(splits, ledger.Split{Category: name, Amount: mag})
+	}
+	return splits, nil
+}
+
+// affectedCategories lists the categories a transaction touches (its splits, or
+// its single category), used for budget warnings.
+func affectedCategories(t ledger.Transaction) []string {
+	if len(t.Splits) == 0 {
+		if t.Category == "" {
+			return nil
+		}
+		return []string{t.Category}
+	}
+	cats := make([]string, 0, len(t.Splits))
+	for _, s := range t.Splits {
+		if s.Category != "" {
+			cats = append(cats, s.Category)
+		}
+	}
+	return cats
 }
 
 func listCmd() *cobra.Command {
@@ -212,8 +267,20 @@ func listCmd() *cobra.Command {
 			w := tw()
 			fmt.Fprintln(w, "DATE\tAMOUNT\tCATEGORY\tNOTE\tID")
 			for _, t := range txns {
+				cat := t.Category
+				if len(t.Splits) > 0 {
+					parts := make([]string, len(t.Splits))
+					for i, s := range t.Splits {
+						parts[i] = s.Category
+					}
+					cat = "split:" + strings.Join(parts, ",")
+				}
+				note := t.Note
+				if t.Attachment != "" {
+					note = "📎 " + note
+				}
 				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
-					t.Date, t.Amount.Format(acct.Decimals), t.Category, t.Note, t.ID)
+					t.Date, t.Amount.Format(acct.Decimals), cat, note, t.ID)
 			}
 			return w.Flush()
 		},
@@ -304,27 +371,29 @@ func summaryCmd() *cobra.Command {
 					if t.Transfer != "" {
 						continue // transfers are not income/expense
 					}
-					amt := t.Amount
-					if in != "" && a.Currency != in {
-						conv, err := rates.Convert(amt, a.Currency, in)
-						if err != nil {
-							return fmt.Errorf("cannot convert %s to %s: %w (set a rate with `duit fx set`)", a.Currency, in, err)
+					for _, ln := range t.Lines() {
+						amt := ln.Amount
+						if in != "" && a.Currency != in {
+							conv, err := rates.Convert(amt, a.Currency, in)
+							if err != nil {
+								return fmt.Errorf("cannot convert %s to %s: %w (set a rate with `duit fx set`)", a.Currency, in, err)
+							}
+							amt = conv
 						}
-						amt = conv
-					}
-					key := t.Category
-					if key == "" {
-						key = "(uncategorized)"
-					}
-					if cats[key] == nil {
-						cats[key] = &tot{}
-					}
-					if amt >= 0 {
-						cats[key].in += amt
-						totIn += amt
-					} else {
-						cats[key].out += amt
-						totOut += amt
+						key := ln.Category
+						if key == "" {
+							key = "(uncategorized)"
+						}
+						if cats[key] == nil {
+							cats[key] = &tot{}
+						}
+						if amt >= 0 {
+							cats[key].in += amt
+							totIn += amt
+						} else {
+							cats[key].out += amt
+							totOut += amt
+						}
 					}
 				}
 			}

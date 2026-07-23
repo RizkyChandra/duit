@@ -119,6 +119,9 @@ func (s *Store) AddTransaction(account string, t Transaction) (Transaction, erro
 	if !validDate(t.Date) {
 		return Transaction{}, fmt.Errorf("invalid date %q (want YYYY-MM-DD)", t.Date)
 	}
+	if err := validateSplits(t); err != nil {
+		return Transaction{}, err
+	}
 	unlock, err := s.lock()
 	if err != nil {
 		return Transaction{}, err
@@ -274,6 +277,24 @@ func (s *Store) lock() (func(), error) {
 	// ponytail: global lockfile; a crash leaves a stale lock needing manual
 	// removal. Upgrade to flock/PID-check if that becomes a nuisance.
 	return func() { os.Remove(path) }, nil
+}
+
+// validateSplits ensures a split transaction's parts sum to its total.
+func validateSplits(t Transaction) error {
+	if len(t.Splits) == 0 {
+		return nil
+	}
+	var sum Money
+	for _, s := range t.Splits {
+		if s.Category == "" {
+			return fmt.Errorf("split is missing a category")
+		}
+		sum += s.Amount
+	}
+	if sum != t.Amount {
+		return fmt.Errorf("splits sum to %d but transaction amount is %d", sum, t.Amount)
+	}
+	return nil
 }
 
 func readJSON(path string, v any) error {

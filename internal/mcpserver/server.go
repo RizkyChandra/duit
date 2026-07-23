@@ -21,7 +21,7 @@ func Serve(ctx context.Context, store *ledger.Store) error {
 // newServer builds a server with all tools registered. Split out so tests can
 // drive it over an in-memory transport.
 func newServer(store *ledger.Store) *mcp.Server {
-	s := mcp.NewServer(&mcp.Implementation{Name: "duit", Version: "v0.2.0"}, nil)
+	s := mcp.NewServer(&mcp.Implementation{Name: "duit", Version: "v0.6.0"}, nil)
 	h := handlers{store}
 	mcp.AddTool(s, &mcp.Tool{Name: "list_accounts", Description: "List accounts with their balances."}, h.listAccounts)
 	mcp.AddTool(s, &mcp.Tool{Name: "get_balance", Description: "Get an account's balance."}, h.getBalance)
@@ -32,6 +32,8 @@ func newServer(store *ledger.Store) *mcp.Server {
 	mcp.AddTool(s, &mcp.Tool{Name: "list_recurring", Description: "List recurring transaction rules."}, h.listRecurring)
 	mcp.AddTool(s, &mcp.Tool{Name: "apply_recurring", Description: "Materialize recurring rules due up to a date (default today)."}, h.applyRecurring)
 	mcp.AddTool(s, &mcp.Tool{Name: "net_worth", Description: "Total balance across accounts converted to one currency."}, h.netWorth)
+	mcp.AddTool(s, &mcp.Tool{Name: "find_transactions", Description: "Search transactions by text, account, category, type, amount, or date."}, h.find)
+	mcp.AddTool(s, &mcp.Tool{Name: "transfer", Description: "Move money between accounts (cross-currency auto-converts)."}, h.transfer)
 	return s
 }
 
