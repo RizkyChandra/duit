@@ -163,7 +163,7 @@ func addCmd() *cobra.Command {
 // +1 forces income (positive magnitude); -1 forces expense (negative magnitude).
 func signedAddCmd(use string, sign int, short string) *cobra.Command {
 	var category, note, date string
-	var splitSpecs []string
+	var splitSpecs, tags []string
 	cmd := &cobra.Command{
 		Use:   use + " <account> <amount>",
 		Short: short,
@@ -198,7 +198,7 @@ func signedAddCmd(use string, sign int, short string) *cobra.Command {
 				return err
 			}
 			t, err := store.AddTransaction(acct.Name, ledger.Transaction{
-				Date: date, Amount: amt, Category: category, Note: note, Splits: splits,
+				Date: date, Amount: amt, Category: category, Note: note, Splits: splits, Tags: tags,
 			})
 			if err != nil {
 				return err
@@ -221,6 +221,7 @@ func signedAddCmd(use string, sign int, short string) *cobra.Command {
 	cmd.Flags().StringVar(&note, "note", "", "note")
 	cmd.Flags().StringVar(&date, "date", "", "date YYYY-MM-DD (default today)")
 	cmd.Flags().StringArrayVar(&splitSpecs, "split", nil, "split part category=amount (repeatable; must sum to the amount)")
+	cmd.Flags().StringArrayVar(&tags, "tag", nil, "tag label (repeatable)")
 	return cmd
 }
 
@@ -296,6 +297,12 @@ func listCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if jsonOut {
+				if txns == nil {
+					txns = []ledger.Transaction{}
+				}
+				return printJSON(txns)
+			}
 			if len(txns) == 0 {
 				fmt.Printf("no transactions in %s for %s\n", month, acct.Name)
 				return nil
@@ -314,6 +321,9 @@ func listCmd() *cobra.Command {
 				note := t.Note
 				if t.Attachment != "" {
 					note = "📎 " + note
+				}
+				if len(t.Tags) > 0 {
+					note = strings.TrimSpace(note + " #" + strings.Join(t.Tags, " #"))
 				}
 				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
 					t.Date, t.Amount.Format(acct.Decimals), cat, note, t.ID)
@@ -344,6 +354,9 @@ func balanceCmd() *cobra.Command {
 				if !ok {
 					return fmt.Errorf("unknown account %q", args[0])
 				}
+				if jsonOut {
+					return printJSON(acct)
+				}
 				fmt.Printf("%s %s\n", acct.Balance.Format(acct.Decimals), acct.Currency)
 				return nil
 			}
@@ -351,11 +364,17 @@ func balanceCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			w := tw()
+			shown := accts[:0:0]
 			for _, a := range accts {
-				if a.Archived && !all {
-					continue
+				if !a.Archived || all {
+					shown = append(shown, a)
 				}
+			}
+			if jsonOut {
+				return printJSON(shown)
+			}
+			w := tw()
+			for _, a := range shown {
 				name := a.Name
 				if a.Archived {
 					name += " (archived)"
@@ -448,6 +467,27 @@ func summaryCmd() *cobra.Command {
 				keys = append(keys, k)
 			}
 			sort.Strings(keys)
+			if jsonOut {
+				type catJSON struct {
+					Category string       `json:"category"`
+					Income   ledger.Money `json:"income"`
+					Expense  ledger.Money `json:"expense"`
+					Net      ledger.Money `json:"net"`
+				}
+				cats2 := make([]catJSON, 0, len(keys))
+				for _, k := range keys {
+					c := cats[k]
+					cats2 = append(cats2, catJSON{k, c.in, c.out, c.in + c.out})
+				}
+				return printJSON(struct {
+					Month      string       `json:"month"`
+					Currency   string       `json:"currency,omitempty"`
+					Categories []catJSON    `json:"categories"`
+					Income     ledger.Money `json:"income"`
+					Expense    ledger.Money `json:"expense"`
+					Net        ledger.Money `json:"net"`
+				}{month, in, cats2, totIn, totOut, totIn + totOut})
+			}
 			w := tw()
 			title := "Summary " + month
 			if in != "" {

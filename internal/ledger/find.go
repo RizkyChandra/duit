@@ -8,9 +8,10 @@ import (
 
 // FindFilter selects transactions in Find. Zero-value fields are ignored.
 type FindFilter struct {
-	Text     string // case-insensitive substring of note/category (incl. splits)
+	Text     string // case-insensitive substring of note/category/tags (incl. splits)
 	Account  string // limit to one account
 	Category string // exact category match (incl. split categories), case-insensitive
+	Tag      string // has this tag (case-insensitive)
 	Type     string // "income" | "expense" | "transfer" | ""
 	Min      *Money // amount magnitude >= Min
 	Max      *Money // amount magnitude <= Max
@@ -20,8 +21,8 @@ type FindFilter struct {
 
 // Found is a transaction together with the account and month it belongs to.
 type Found struct {
-	Account string
-	Month   string
+	Account string `json:"account"`
+	Month   string `json:"month"`
 	Transaction
 }
 
@@ -96,10 +97,23 @@ func matchesFilter(t Transaction, f FindFilter) bool {
 	if f.Category != "" && !hasCategory(t, f.Category) {
 		return false
 	}
+	if f.Tag != "" && !hasTag(t, f.Tag) {
+		return false
+	}
 	if f.Text != "" && !matchesText(t, f.Text) {
 		return false
 	}
 	return true
+}
+
+func hasTag(t Transaction, tag string) bool {
+	tag = strings.ToLower(tag)
+	for _, x := range t.Tags {
+		if strings.ToLower(x) == tag {
+			return true
+		}
+	}
+	return false
 }
 
 func hasCategory(t Transaction, cat string) bool {
@@ -119,6 +133,11 @@ func matchesText(t Transaction, q string) bool {
 	q = strings.ToLower(q)
 	if strings.Contains(strings.ToLower(t.Note), q) || strings.Contains(strings.ToLower(t.Category), q) {
 		return true
+	}
+	for _, tag := range t.Tags {
+		if strings.Contains(strings.ToLower(tag), q) {
+			return true
+		}
 	}
 	for _, s := range t.Splits {
 		if strings.Contains(strings.ToLower(s.Category), q) || strings.Contains(strings.ToLower(s.Note), q) {

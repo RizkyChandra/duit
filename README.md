@@ -42,10 +42,13 @@ duit mcp                        # MCP server over stdio
 | `init` | Create data dir + git repo + config (data dir, currency, remote, auth) |
 | `account add\|list\|rm` | Manage accounts (`rm` needs `--yes`) |
 | `income \| expense <acct> <amount>` | Record money (positive magnitude; direction by verb) |
-| `add <acct> <amount>` | Signed add (positive = income). For a negative literal use `expense` instead. `--split cat=amt` splits across categories |
+| `add <acct> <amount>` | Signed add (positive = income). For a negative literal use `expense` instead. `--split cat=amt` splits across categories; `--tag` labels (repeatable) |
 | `transfer <from> <to> <amount>` | Move money between accounts (linked pair, excluded from income/expense; cross-currency auto-converts, `--dest-amount` overrides) |
 | `list <acct> [--month]` | Transactions for a month |
-| `find [text] [--account --category --type --min --max --from --to --month]` | Search transactions across all accounts/months |
+| `find [text] [--account --category --tag --type --min --max --from --to --month]` | Search transactions across all accounts/months |
+| `edit <id>` / `rm <id>` | Edit (only the flags you pass; `--amount` keeps direction unless you type `+`/`-`) or delete a transaction |
+| `verify [--fix]` | Check data integrity (balances, running totals, splits); `--fix` repairs drift by recomputing |
+| `config` | Show current settings (token redacted) |
 | `balance [acct]` | Balance(s) |
 | `summary [--account] [--month]` | Per-category income/expense/net |
 | `recompute [acct]` | Rebuild cached balances from transaction files |
@@ -110,6 +113,11 @@ Tracked at [Project #5](https://github.com/users/RizkyChandra/projects/5/views/1
 - [x] v0.6.0 — search/filter (`find`) · split transactions (`--split`) · receipts (`attach`/`receipt`) · MCP `find_transactions` + `transfer`
 - [x] v0.7.0 — category management (`category add/list/rename/rm`; rename migrates existing transactions, splits, and budgets)
 - [x] v0.8.0 — recurring transfers (`recurring add --to`) · TUI dashboard (`D`) · account archiving (`account archive`)
+- [x] v0.9.0 — tags (`--tag`, `find --tag`) · CLI `edit`/`rm` · `verify` integrity check · scriptability (`--json`, `config`, shell completions)
+
+### Planned
+
+- **v1.0.0** — stabilization: hardening, docs, and a stable release
 
 ## License
 

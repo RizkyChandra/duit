@@ -3,6 +3,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -15,6 +16,19 @@ import (
 	"github.com/RizkyChandra/duit/internal/tui"
 	"github.com/spf13/cobra"
 )
+
+// jsonOut is set by the global --json flag; read commands emit JSON when true.
+var jsonOut bool
+
+// printJSON writes v as indented JSON.
+func printJSON(v any) error {
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(b))
+	return nil
+}
 
 // Execute runs the duit CLI, exiting non-zero on error.
 func Execute(version string) {
@@ -34,6 +48,7 @@ func newRoot(version string) *cobra.Command {
 		// No subcommand: launch the TUI.
 		RunE: func(cmd *cobra.Command, args []string) error { return runTUI() },
 	}
+	root.PersistentFlags().BoolVar(&jsonOut, "json", false, "output JSON instead of tables (read commands)")
 	root.AddCommand(
 		initCmd(),
 		accountCmd(),
@@ -41,6 +56,8 @@ func newRoot(version string) *cobra.Command {
 		signedAddCmd("income", +1, "Record income (positive)"),
 		signedAddCmd("expense", -1, "Record an expense (magnitude, stored negative)"),
 		transferCmd(),
+		editCmd(),
+		rmCmd(),
 		listCmd(),
 		findCmd(),
 		balanceCmd(),
@@ -56,6 +73,8 @@ func newRoot(version string) *cobra.Command {
 		importCmd(),
 		attachCmd(),
 		receiptCmd(),
+		verifyCmd(),
+		configCmd(),
 		authCmd(),
 		syncCmd(),
 		mcpCmd(),

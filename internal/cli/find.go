@@ -9,7 +9,7 @@ import (
 )
 
 func findCmd() *cobra.Command {
-	var account, category, typ, from, to, month, min, max string
+	var account, category, tag, typ, from, to, month, min, max string
 	cmd := &cobra.Command{
 		Use:   "find [text]",
 		Short: "Search transactions across accounts and months",
@@ -24,7 +24,7 @@ func findCmd() *cobra.Command {
 			default:
 				return fmt.Errorf("--type must be income, expense, or transfer")
 			}
-			f := ledger.FindFilter{Account: account, Category: category, Type: typ, From: from, To: to}
+			f := ledger.FindFilter{Account: account, Category: category, Tag: tag, Type: typ, From: from, To: to}
 			if len(args) == 1 {
 				f.Text = args[0]
 			}
@@ -49,6 +49,12 @@ func findCmd() *cobra.Command {
 			found, err := store.Find(f)
 			if err != nil {
 				return err
+			}
+			if jsonOut {
+				if found == nil {
+					found = []ledger.Found{}
+				}
+				return printJSON(found)
 			}
 			if len(found) == 0 {
 				fmt.Println("no matching transactions")
@@ -75,6 +81,9 @@ func findCmd() *cobra.Command {
 				if x.Attachment != "" {
 					note = "📎 " + note
 				}
+				if len(x.Tags) > 0 {
+					note = strings.TrimSpace(note + " #" + strings.Join(x.Tags, " #"))
+				}
 				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
 					x.Date, x.Account, x.Amount.Format(decOf[x.Account]), cat, note, x.ID)
 			}
@@ -84,6 +93,7 @@ func findCmd() *cobra.Command {
 	f := cmd.Flags()
 	f.StringVar(&account, "account", "", "limit to one account")
 	f.StringVar(&category, "category", "", "exact category (incl. split categories)")
+	f.StringVar(&tag, "tag", "", "has this tag")
 	f.StringVar(&typ, "type", "", "income | expense | transfer")
 	f.StringVar(&min, "min", "", "minimum amount magnitude")
 	f.StringVar(&max, "max", "", "maximum amount magnitude")

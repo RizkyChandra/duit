@@ -23,6 +23,9 @@ type Transaction struct {
 	Splits []Split `json:"splits,omitempty"`
 	// Attachment is a receipt path relative to the data directory, if any.
 	Attachment string `json:"attachment,omitempty"`
+	// Tags are free-form labels for cross-cutting filtering (independent of the
+	// single Category).
+	Tags []string `json:"tags,omitempty"`
 }
 
 // Split is one category portion of a split transaction.
