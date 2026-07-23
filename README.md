@@ -43,6 +43,7 @@ duit mcp                        # MCP server over stdio
 | `account add\|list\|rm` | Manage accounts (`rm` needs `--yes`) |
 | `income \| expense <acct> <amount>` | Record money (positive magnitude; direction by verb) |
 | `add <acct> <amount>` | Signed add (positive = income). For a negative literal use `expense` instead |
+| `transfer <from> <to> <amount>` | Move money between accounts (linked pair, excluded from income/expense; cross-currency auto-converts, `--dest-amount` overrides) |
 | `list <acct> [--month]` | Transactions for a month |
 | `balance [acct]` | Balance(s) |
 | `summary [--account] [--month]` | Per-category income/expense/net |
@@ -51,7 +52,7 @@ duit mcp                        # MCP server over stdio
 | `recurring add\|list\|rm\|apply` | Recurring rules; `apply` materializes everything due up to a date (idempotent) |
 | `fx set\|list\|rm\|update` | Exchange rates for cross-currency views; `update` pulls from frankfurter.app (ECB) |
 | `networth [--in CODE]` | Total balance across all accounts, converted to one currency |
-| `report [--month] [--in CODE]` / `report trend [--months N]` | In-terminal bar charts: category breakdown + monthly trend |
+| `report [--month] [--in CODE]` / `report trend [--months N]` / `report networth [--months N]` | In-terminal bar charts: category breakdown, monthly expense trend, net-worth-over-time |
 | `export [--account] [--from --to] [--out]` | Write transactions to CSV |
 | `import <account> <file>` | Import a CSV (auto-detects date/amount/debit/credit/category headers; `--dry-run`, override flags) |
 | `auth set-token\|migrate` | Manage the GitHub PAT (stored in the OS keychain, falls back to config file) |
@@ -100,6 +101,7 @@ Tracked at [Project #5](https://github.com/users/RizkyChandra/projects/5/views/1
 - [x] v0.2.0 — OS-keychain PAT storage · per-category monthly budgets (warn-only) · recurring transactions (explicit `apply`)
 - [x] v0.3.0 — multi-currency conversion (manual rate table + `fx update`), net worth, currency-aware summary/budgets
 - [x] v0.4.0 — CSV import/export · terminal reports (`report`, `report trend`) · TUI budget & fx screens (`b`/`f`)
+- [x] v0.5.0 — transfers between accounts · net-worth-over-time (`report networth`) · TUI transfer (`t`) + editable budget/fx screens
 
 ## License
 

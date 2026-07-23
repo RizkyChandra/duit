@@ -63,8 +63,8 @@ func reportCmd() *cobra.Command {
 					return err
 				}
 				for _, t := range txns {
-					if t.Amount >= 0 {
-						continue // expenses only
+					if t.Amount >= 0 || t.Transfer != "" {
+						continue // expenses only; transfers are not spending
 					}
 					amt := -t.Amount // magnitude
 					if in != "" && a.Currency != in {
@@ -101,8 +101,102 @@ func reportCmd() *cobra.Command {
 	cmd.Flags().StringVar(&account, "account", "", "limit to one account")
 	cmd.Flags().StringVar(&month, "month", "", "month YYYY-MM (default current)")
 	cmd.Flags().StringVar(&in, "in", "", "convert all amounts to this currency (needs fx rates)")
-	cmd.AddCommand(reportTrendCmd())
+	cmd.AddCommand(reportTrendCmd(), reportNetworthCmd())
 	return cmd
+}
+
+func reportNetworthCmd() *cobra.Command {
+	var in string
+	var months int
+	cmd := &cobra.Command{
+		Use:   "networth",
+		Short: "Total net worth per month for the last N months",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, store, err := mustCtx()
+			if err != nil {
+				return err
+			}
+			if months < 1 {
+				months = 6
+			}
+			rates, err := store.LoadRates()
+			if err != nil {
+				return err
+			}
+			target := strings.ToUpper(in)
+			if target == "" {
+				if rates.Base != "" {
+					target = rates.Base
+				} else {
+					target = c.DefaultCurrency
+				}
+			}
+			accts, err := store.LoadAccounts()
+			if err != nil {
+				return err
+			}
+			dec := ledger.CurrencyDecimals(target)
+			missing := map[string]bool{}
+			pairs := make([]pair, 0, months)
+			for _, m := range lastMonths(months) {
+				var total ledger.Money
+				for _, a := range accts {
+					bal := monthEndBalance(store, a.Name, m)
+					if a.Currency != target {
+						conv, err := rates.Convert(bal, a.Currency, target)
+						if err != nil {
+							missing[a.Currency] = true
+							continue
+						}
+						bal = conv
+					}
+					total += bal
+				}
+				pairs = append(pairs, pair{m, total})
+			}
+			fmt.Printf("Net worth (in %s)\n", target)
+			renderBarsOrdered(pairs, dec)
+			if len(missing) > 0 {
+				codes := make([]string, 0, len(missing))
+				for code := range missing {
+					codes = append(codes, code)
+				}
+				sort.Strings(codes)
+				fmt.Printf("note: no rate for %s; set one with `duit fx set`\n", strings.Join(codes, ", "))
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&in, "in", "", "currency to value net worth in (default: base / ledger default)")
+	cmd.Flags().IntVar(&months, "months", 6, "number of months to show")
+	return cmd
+}
+
+// monthEndBalance returns account's closing balance as of `month` (YYYY-MM):
+// the closing of the latest month file at or before `month`, carried forward,
+// or 0 if the account had no transactions by then.
+func monthEndBalance(store *ledger.Store, account, month string) ledger.Money {
+	all, err := store.Months(account) // sorted ascending
+	if err != nil {
+		return 0
+	}
+	chosen := ""
+	for _, m := range all {
+		if m <= month {
+			chosen = m
+		} else {
+			break
+		}
+	}
+	if chosen == "" {
+		return 0
+	}
+	mf, err := store.LoadMonth(account, chosen)
+	if err != nil {
+		return 0
+	}
+	return mf.Closing
 }
 
 func reportTrendCmd() *cobra.Command {
@@ -144,7 +238,7 @@ func reportTrendCmd() *cobra.Command {
 						return err
 					}
 					for _, t := range txns {
-						if t.Amount >= 0 {
+						if t.Amount >= 0 || t.Transfer != "" {
 							continue
 						}
 						amt := -t.Amount

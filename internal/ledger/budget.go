@@ -118,8 +118,8 @@ func (s *Store) BudgetStatus(month string) ([]BudgetLine, error) {
 			return nil, err
 		}
 		for _, t := range txns {
-			if t.Amount >= 0 {
-				continue
+			if t.Amount >= 0 || t.Transfer != "" {
+				continue // income and transfer legs are not spending
 			}
 			mag := -t.Amount
 			if target != "" && a.Currency != target {

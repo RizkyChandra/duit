@@ -128,3 +128,96 @@ func TestAddTransactionFlow(t *testing.T) {
 		t.Fatalf("added transaction not persisted: %+v", txns)
 	}
 }
+
+// drive applies a message and returns the concrete Model.
+func drive(mod tea.Model, msg tea.Msg) Model {
+	n, _ := mod.Update(msg)
+	return n.(Model)
+}
+
+func typeRunes(m Model, s string) Model {
+	for _, r := range s {
+		m = drive(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+	return m
+}
+
+func TestTransferFlow(t *testing.T) {
+	s := &ledger.Store{Dir: t.TempDir()}
+	for _, a := range []string{"wallet", "bank"} {
+		if err := s.AddAccount(ledger.Account{Name: a, Currency: "USD", Decimals: 2, Created: "2026-01-01"}); err != nil {
+			t.Fatalf("AddAccount: %v", err)
+		}
+	}
+	if _, err := s.AddTransaction("wallet", ledger.Transaction{Date: "2026-07-01", Amount: 100000, Category: "seed"}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	m := New(s, nil)
+
+	m = drive(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}}) // open transfer (source=wallet)
+	if m.screen != screenTransfer {
+		t.Fatalf("expected transfer screen, got %d", m.screen)
+	}
+	if !strings.Contains(m.View(), "bank") {
+		t.Fatalf("destination not shown:\n%s", m.View())
+	}
+	m = typeRunes(m, "25.00")                    // amount field is focused
+	m = drive(m, tea.KeyMsg{Type: tea.KeyEnter}) // submit
+	if m.err != nil {
+		t.Fatalf("transfer error: %v", m.err)
+	}
+	bank, _, _ := s.Account("bank")
+	if bank.Balance != 2500 {
+		t.Fatalf("bank balance = %d, want 2500", bank.Balance)
+	}
+}
+
+func TestBudgetEdit(t *testing.T) {
+	s := seedStore(t)
+	m := New(s, nil)
+	m = drive(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}}) // budget screen
+	m = drive(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}}) // set prompt
+	m = typeRunes(m, "food")
+	m = drive(m, tea.KeyMsg{Type: tea.KeyTab})
+	m = typeRunes(m, "150.00")
+	m = drive(m, tea.KeyMsg{Type: tea.KeyEnter})
+	if m.err != nil {
+		t.Fatalf("SetBudget via prompt: %v", m.err)
+	}
+	lines, _ := s.BudgetStatus(m.budgetMonth)
+	if len(lines) != 1 || lines[0].Category != "food" || lines[0].Limit != 15000 {
+		t.Fatalf("budget not set: %+v", lines)
+	}
+	// remove it
+	m = drive(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	m = typeRunes(m, "food")
+	m = drive(m, tea.KeyMsg{Type: tea.KeyEnter})
+	if lines, _ := s.BudgetStatus(m.budgetMonth); len(lines) != 0 {
+		t.Fatalf("budget not removed: %+v", lines)
+	}
+}
+
+func TestFXEdit(t *testing.T) {
+	s := seedStore(t) // one account, currency USD
+	m := New(s, nil)
+	m = drive(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}}) // fx screen
+	m = drive(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}}) // set prompt
+	m = typeRunes(m, "idr")
+	m = drive(m, tea.KeyMsg{Type: tea.KeyTab})
+	m = typeRunes(m, "16000")
+	m = drive(m, tea.KeyMsg{Type: tea.KeyEnter})
+	if m.err != nil {
+		t.Fatalf("SetRate via prompt: %v", m.err)
+	}
+	r, _ := s.LoadRates()
+	if r.Base != "USD" || r.Rates["IDR"] != 16000 || r.Rates["USD"] != 1 {
+		t.Fatalf("rates not set: %+v", r)
+	}
+	// remove IDR
+	m = drive(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	m = typeRunes(m, "IDR")
+	m = drive(m, tea.KeyMsg{Type: tea.KeyEnter})
+	if r, _ := s.LoadRates(); r.Rates["IDR"] != 0 {
+		t.Fatalf("IDR not removed: %+v", r)
+	}
+}

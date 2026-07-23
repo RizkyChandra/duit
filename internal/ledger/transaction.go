@@ -13,6 +13,10 @@ type Transaction struct {
 	Amount   Money  `json:"amount"`
 	Category string `json:"category,omitempty"`
 	Note     string `json:"note,omitempty"`
+	// Transfer, when set, names the counterparty account of a transfer leg.
+	// Such legs move money between accounts and are NOT income or expense, so
+	// summaries, reports, and budgets exclude them.
+	Transfer string `json:"transfer,omitempty"`
 }
 
 const dateLayout = "2006-01-02"

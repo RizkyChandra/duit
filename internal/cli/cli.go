@@ -40,6 +40,7 @@ func newRoot(version string) *cobra.Command {
 		addCmd(),
 		signedAddCmd("income", +1, "Record income (positive)"),
 		signedAddCmd("expense", -1, "Record an expense (magnitude, stored negative)"),
+		transferCmd(),
 		listCmd(),
 		balanceCmd(),
 		summaryCmd(),

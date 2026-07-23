@@ -4,6 +4,8 @@ package tui
 import (
 	"fmt"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/RizkyChandra/duit/internal/ledger"
@@ -56,6 +58,7 @@ const (
 	screenForm
 	screenBudget
 	screenFX
+	screenTransfer
 )
 
 const dateFmt = "2006-01-02"
@@ -92,10 +95,18 @@ type Model struct {
 	editID    string
 	editMonth string
 
-	// read-only screens
+	// budget/fx screens
 	budgetMonth string
 	budgets     []ledger.BudgetLine
 	rates       ledger.Rates
+
+	// inline prompt overlay (budget/fx edits); nil when not prompting
+	prompt      []field
+	promptKind  string
+	promptFocus int
+
+	// transfer form
+	transDest int // index into m.accounts of the destination
 }
 
 // New builds the root model, loading the account list. Errors are surfaced in
@@ -242,7 +253,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case screenForm:
 		return m.updateForm(km)
 	case screenBudget, screenFX:
-		return m.updateReadonly(km)
+		return m.updateBudgetFX(km)
+	case screenTransfer:
+		return m.updateTransfer(km)
 	}
 	return m, nil
 }
@@ -270,18 +283,198 @@ func (m Model) updateAccounts(km tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "f":
 		m.rates, m.err = m.store.LoadRates()
 		m.screen = screenFX
+	case "t":
+		if len(m.accounts) < 2 {
+			m.status = "need at least 2 accounts to transfer"
+		} else {
+			m.transDest = m.accCur
+			m.cycleDest(1) // first account that isn't the source
+			m.inputs = []field{{label: "Amount", focused: true}, {label: "Note"}}
+			m.formFocus = 0
+			m.status, m.err = "", nil
+			m.screen = screenTransfer
+		}
 	}
 	return m, nil
 }
 
-func (m Model) updateReadonly(km tea.KeyMsg) (tea.Model, tea.Cmd) {
+// cycleDest advances the destination index to the next account that isn't the
+// source (m.accCur), wrapping around.
+func (m *Model) cycleDest(dir int) {
+	n := len(m.accounts)
+	for k := 0; k < n; k++ {
+		m.transDest = (m.transDest + dir + n) % n
+		if m.transDest != m.accCur {
+			return
+		}
+	}
+}
+
+func (m Model) updateBudgetFX(km tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.prompt != nil {
+		return m.updatePrompt(km)
+	}
 	switch km.String() {
 	case "q":
 		return m, tea.Quit
 	case "esc":
 		m.screen = screenAccounts
+	case "a", "s":
+		if m.screen == screenBudget {
+			m.startPrompt("budgetset", "Category", "Limit")
+		} else {
+			m.startPrompt("fxset", "Currency CODE", "Rate")
+		}
+	case "d":
+		if m.screen == screenBudget {
+			m.startPrompt("budgetdel", "Category")
+		} else {
+			m.startPrompt("fxdel", "Currency CODE")
+		}
 	}
 	return m, nil
+}
+
+func (m *Model) startPrompt(kind string, labels ...string) {
+	m.prompt = make([]field, len(labels))
+	for i, l := range labels {
+		m.prompt[i] = field{label: l}
+	}
+	m.prompt[0].focused = true
+	m.promptFocus = 0
+	m.promptKind = kind
+	m.err = nil
+}
+
+func (m Model) updatePrompt(km tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch km.String() {
+	case "esc":
+		m.prompt = nil
+	case "enter":
+		if err := m.submitPrompt(); err != nil {
+			m.err = err
+		} else {
+			m.err = nil
+			m.prompt = nil
+		}
+	case "tab", "down":
+		m.promptFocus = (m.promptFocus + 1) % len(m.prompt)
+		m.focusPrompt()
+	case "shift+tab", "up":
+		m.promptFocus = (m.promptFocus - 1 + len(m.prompt)) % len(m.prompt)
+		m.focusPrompt()
+	default:
+		m.prompt[m.promptFocus].update(km)
+	}
+	return m, nil
+}
+
+func (m *Model) focusPrompt() {
+	for i := range m.prompt {
+		m.prompt[i].focused = i == m.promptFocus
+	}
+}
+
+func (m *Model) submitPrompt() error {
+	switch m.promptKind {
+	case "budgetset":
+		lim, err := ledger.ParseMoney(m.prompt[1].value, ledger.CurrencyDecimals(m.rates.Base))
+		if err != nil {
+			return err
+		}
+		if err := m.store.SetBudget(strings.TrimSpace(m.prompt[0].value), lim); err != nil {
+			return err
+		}
+		m.status = "budget set"
+	case "budgetdel":
+		if err := m.store.RemoveBudget(strings.TrimSpace(m.prompt[0].value)); err != nil {
+			return err
+		}
+		m.status = "budget removed"
+	case "fxset":
+		rate, err := strconv.ParseFloat(strings.TrimSpace(m.prompt[1].value), 64)
+		if err != nil {
+			return err
+		}
+		r, err := m.store.LoadRates()
+		if err != nil {
+			return err
+		}
+		if r.Rates == nil {
+			r.Rates = map[string]float64{}
+		}
+		r.Rates[strings.ToUpper(strings.TrimSpace(m.prompt[0].value))] = rate
+		if r.Base == "" && len(m.accounts) > 0 {
+			r.Base = m.accounts[0].Currency
+			r.Rates[r.Base] = 1
+		}
+		if err := m.store.SaveRates(r); err != nil {
+			return err
+		}
+		m.status = "rate set"
+	case "fxdel":
+		r, err := m.store.LoadRates()
+		if err != nil {
+			return err
+		}
+		code := strings.ToUpper(strings.TrimSpace(m.prompt[0].value))
+		if code == r.Base {
+			return fmt.Errorf("cannot remove base currency %s", code)
+		}
+		delete(r.Rates, code)
+		if err := m.store.SaveRates(r); err != nil {
+			return err
+		}
+		m.status = "rate removed"
+	}
+	// Reload whichever screen is underneath.
+	if m.screen == screenBudget {
+		m.budgets, _ = m.store.BudgetStatus(m.budgetMonth)
+	} else {
+		m.rates, _ = m.store.LoadRates()
+	}
+	return nil
+}
+
+func (m Model) updateTransfer(km tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch km.String() {
+	case "esc":
+		m.screen = screenAccounts
+	case "left":
+		m.cycleDest(-1)
+	case "right":
+		m.cycleDest(1)
+	case "tab", "down":
+		m.focusInput(m.formFocus + 1)
+	case "shift+tab", "up":
+		m.focusInput(m.formFocus - 1)
+	case "enter":
+		if err := m.submitTransfer(); err != nil {
+			m.err = err
+		} else {
+			m.err = nil
+			m.reloadAccounts()
+			m.screen = screenAccounts
+		}
+	default:
+		m.inputs[m.formFocus].update(km)
+	}
+	return m, nil
+}
+
+func (m *Model) submitTransfer() error {
+	src, dst := m.accounts[m.accCur], m.accounts[m.transDest]
+	amt, err := ledger.ParseMoney(m.inputs[0].value, src.Decimals)
+	if err != nil {
+		return err
+	}
+	got, sent, err := m.store.Transfer(src.Name, dst.Name, amt, nil, time.Now().Format(dateFmt), m.inputs[1].value)
+	if err != nil {
+		return err
+	}
+	m.status = fmt.Sprintf("transferred %s from %s -> %s to %s",
+		got.Format(src.Decimals), src.Name, sent.Format(dst.Decimals), dst.Name)
+	return nil
 }
 
 func (m Model) updateTxns(km tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -386,9 +579,34 @@ func (m Model) View() string {
 		return m.viewBudget()
 	case screenFX:
 		return m.viewFX()
+	case screenTransfer:
+		return m.viewTransfer()
 	default:
 		return m.viewAccounts()
 	}
+}
+
+// promptView renders the inline edit overlay for the budget/fx screens.
+func (m Model) promptView() string {
+	if m.prompt == nil {
+		return ""
+	}
+	s := "\n"
+	for i := range m.prompt {
+		s += m.prompt[i].view() + "\n"
+	}
+	return s + statusStyle.Render("enter confirm · esc cancel")
+}
+
+func (m Model) viewTransfer() string {
+	src, dst := m.accounts[m.accCur], m.accounts[m.transDest]
+	s := headerStyle.Render("Transfer from "+src.Name) + "\n\n"
+	s += fmt.Sprintf("  To: %s (%s)   ", dst.Name, dst.Currency) + cursorStyle.Render("←/→ change") + "\n\n"
+	for i := range m.inputs {
+		s += m.inputs[i].view() + "\n"
+	}
+	s += "\n" + statusStyle.Render("←/→ dest · tab move · enter send · esc cancel")
+	return s + m.footer()
 }
 
 func (m Model) viewAccounts() string {
@@ -405,7 +623,7 @@ func (m Model) viewAccounts() string {
 		}
 		s += cursor + line + "\n"
 	}
-	s += "\n" + statusStyle.Render("up/down·k/j move · enter open · b budget · f fx · q quit")
+	s += "\n" + statusStyle.Render("up/down·k/j move · enter open · t transfer · b budget · f fx · q quit")
 	return s + m.footer()
 }
 
@@ -425,7 +643,8 @@ func (m Model) viewBudget() string {
 			s += line + "\n"
 		}
 	}
-	s += "\n" + statusStyle.Render("esc back · q quit")
+	s += "\n" + statusStyle.Render("s set · d remove · esc back · q quit")
+	s += m.promptView()
 	return s + m.footer()
 }
 
@@ -443,7 +662,8 @@ func (m Model) viewFX() string {
 			s += fmt.Sprintf("  1 %s = %g %s\n", m.rates.Base, m.rates.Rates[c], c)
 		}
 	}
-	s += "\n" + statusStyle.Render("esc back · q quit")
+	s += "\n" + statusStyle.Render("s set · d remove · esc back · q quit")
+	s += m.promptView()
 	return s + m.footer()
 }
 

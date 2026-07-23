@@ -301,6 +301,9 @@ func summaryCmd() *cobra.Command {
 					return err
 				}
 				for _, t := range txns {
+					if t.Transfer != "" {
+						continue // transfers are not income/expense
+					}
 					amt := t.Amount
 					if in != "" && a.Currency != in {
 						conv, err := rates.Convert(amt, a.Currency, in)
