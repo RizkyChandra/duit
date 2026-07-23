@@ -62,3 +62,25 @@ func TestRemoveTransaction(t *testing.T) {
 		t.Error("removing missing id should error")
 	}
 }
+
+func TestRemoveAccount(t *testing.T) {
+	s := &Store{Dir: t.TempDir()}
+	if err := s.AddAccount(Account{Name: "cash", Currency: "USD", Decimals: 2}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddTransaction("cash", Transaction{Date: "2026-04-01", Amount: 100}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RemoveAccount("cash"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := s.Account("cash"); ok {
+		t.Error("account still present after RemoveAccount")
+	}
+	if months, _ := s.Months("cash"); len(months) != 0 {
+		t.Errorf("txn files remain after RemoveAccount: %v", months)
+	}
+	if err := s.RemoveAccount("cash"); err == nil {
+		t.Error("removing missing account should error")
+	}
+}

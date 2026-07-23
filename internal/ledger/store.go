@@ -142,6 +142,36 @@ func (s *Store) AddTransaction(account string, t Transaction) (Transaction, erro
 	return t, nil
 }
 
+// RemoveAccount deletes an account from the registry along with all of its
+// transaction files.
+func (s *Store) RemoveAccount(name string) error {
+	unlock, err := s.lock()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	accts, err := s.LoadAccounts()
+	if err != nil {
+		return err
+	}
+	out := accts[:0:0]
+	found := false
+	for _, a := range accts {
+		if a.Name == name {
+			found = true
+			continue
+		}
+		out = append(out, a)
+	}
+	if !found {
+		return fmt.Errorf("account %q not found", name)
+	}
+	if err := s.SaveAccounts(out); err != nil {
+		return err
+	}
+	return os.RemoveAll(filepath.Join(s.Dir, "txns", name))
+}
+
 // RemoveTransaction deletes the transaction with id from an account's month
 // file, then recomputes balances. Editing = RemoveTransaction + AddTransaction.
 func (s *Store) RemoveTransaction(account, month, id string) error {
