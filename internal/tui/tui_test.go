@@ -3,6 +3,7 @@ package tui
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/RizkyChandra/duit/internal/ledger"
 
@@ -219,5 +220,70 @@ func TestFXEdit(t *testing.T) {
 	m = drive(m, tea.KeyMsg{Type: tea.KeyEnter})
 	if r, _ := s.LoadRates(); r.Rates["IDR"] != 0 {
 		t.Fatalf("IDR not removed: %+v", r)
+	}
+}
+
+func TestArchivedAccountHidden(t *testing.T) {
+	s := &ledger.Store{Dir: t.TempDir()}
+	if err := s.AddAccount(ledger.Account{Name: "wallet", Currency: "USD", Decimals: 2, Created: "2026-01-01"}); err != nil {
+		t.Fatalf("AddAccount: %v", err)
+	}
+	if err := s.AddAccount(ledger.Account{Name: "oldcard", Currency: "USD", Decimals: 2, Created: "2026-01-01", Archived: true}); err != nil {
+		t.Fatalf("AddAccount: %v", err)
+	}
+	m := New(s, nil)
+	v := m.View()
+	if !strings.Contains(v, "wallet") {
+		t.Fatalf("active account missing:\n%s", v)
+	}
+	if strings.Contains(v, "oldcard") {
+		t.Fatalf("archived account should be hidden:\n%s", v)
+	}
+	if len(m.accounts) != 1 || len(m.allAccounts) != 2 {
+		t.Fatalf("accounts=%d allAccounts=%d, want 1/2", len(m.accounts), len(m.allAccounts))
+	}
+}
+
+func TestDashboardScreen(t *testing.T) {
+	s := &ledger.Store{Dir: t.TempDir()}
+	if err := s.AddAccount(ledger.Account{Name: "wallet", Currency: "USD", Decimals: 2, Created: "2026-01-01"}); err != nil {
+		t.Fatalf("AddAccount: %v", err)
+	}
+	// archived account with a balance — must still count toward net worth
+	if err := s.AddAccount(ledger.Account{Name: "savings", Currency: "USD", Decimals: 2, Created: "2026-01-01", Archived: true}); err != nil {
+		t.Fatalf("AddAccount: %v", err)
+	}
+	month := time.Now().Format("2006-01")
+	for _, tx := range []ledger.Transaction{
+		{Date: month + "-05", Amount: 200000, Category: "salary"},
+		{Date: month + "-06", Amount: -3000, Category: "food"},
+		{Date: month + "-07", Amount: -1000, Category: "transport"},
+	} {
+		if _, err := s.AddTransaction("wallet", tx); err != nil {
+			t.Fatalf("AddTransaction: %v", err)
+		}
+	}
+	if _, err := s.AddTransaction("savings", ledger.Transaction{Date: month + "-01", Amount: 500000, Category: "seed"}); err != nil {
+		t.Fatalf("AddTransaction: %v", err)
+	}
+
+	m := New(s, nil)
+	m = drive(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'D'}})
+	if m.screen != screenDashboard {
+		t.Fatalf("expected dashboard screen, got %d", m.screen)
+	}
+	v := m.View()
+	for _, want := range []string{"Net worth", "This month", "income", "food", "transport"} {
+		if !strings.Contains(v, want) {
+			t.Fatalf("dashboard missing %q:\n%s", want, v)
+		}
+	}
+	// net worth = wallet(196000) + savings(500000) = 696000 -> "7000.00"
+	if !strings.Contains(v, "7000.00") {
+		t.Fatalf("net worth should include archived account:\n%s", v)
+	}
+	// esc returns to accounts
+	if back := drive(m, tea.KeyMsg{Type: tea.KeyEsc}); back.screen != screenAccounts {
+		t.Fatalf("esc did not return to accounts")
 	}
 }

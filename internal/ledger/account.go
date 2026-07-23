@@ -1,6 +1,9 @@
 package ledger
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // Account is a tracked account with a cached running balance. The balance is a
 // cache; the authoritative source is the per-month transaction files.
@@ -10,7 +13,28 @@ type Account struct {
 	Decimals int    `json:"decimals"`
 	Type     string `json:"type,omitempty"` // e.g. cash, bank, credit
 	Balance  Money  `json:"balance"`
-	Created  string `json:"created"` // YYYY-MM-DD
+	Created  string `json:"created"`            // YYYY-MM-DD
+	Archived bool   `json:"archived,omitempty"` // hidden from default views; data retained
+}
+
+// SetArchived marks an account archived (hidden from default lists) or active.
+func (s *Store) SetArchived(name string, archived bool) error {
+	unlock, err := s.lock()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	accts, err := s.LoadAccounts()
+	if err != nil {
+		return err
+	}
+	for i := range accts {
+		if accts[i].Name == name {
+			accts[i].Archived = archived
+			return s.SaveAccounts(accts)
+		}
+	}
+	return fmt.Errorf("account %q not found", name)
 }
 
 // zeroDecimalCurrencies are currencies conventionally written without minor

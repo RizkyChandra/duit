@@ -11,11 +11,14 @@ import (
 // Recurring is a rule that generates transactions on a cadence. Transactions are
 // materialized only by an explicit ApplyRecurring (catch-up), never on a timer.
 type Recurring struct {
-	ID          string `json:"id"`
-	Account     string `json:"account"`
-	Amount      Money  `json:"amount"`
-	Category    string `json:"category,omitempty"`
-	Note        string `json:"note,omitempty"`
+	ID       string `json:"id"`
+	Account  string `json:"account"`
+	Amount   Money  `json:"amount"`
+	Category string `json:"category,omitempty"`
+	Note     string `json:"note,omitempty"`
+	// To, when set, makes this a recurring transfer into that account (Amount is
+	// the positive transfer magnitude, cross-currency auto-converted at apply).
+	To          string `json:"to,omitempty"`
 	Cadence     string `json:"cadence"`  // "daily" | "weekly" | "monthly"
 	Interval    int    `json:"interval"` // >= 1
 	Day         int    `json:"day"`      // day-of-month 1..31 for monthly; ignored otherwise
@@ -48,6 +51,9 @@ func (s *Store) AddRecurring(r Recurring) (Recurring, error) {
 	}
 	if !validDate(r.Start) {
 		return Recurring{}, fmt.Errorf("invalid start date %q (want YYYY-MM-DD)", r.Start)
+	}
+	if r.To != "" && r.To == r.Account {
+		return Recurring{}, fmt.Errorf("cannot transfer to the same account")
 	}
 	if r.Interval < 1 {
 		r.Interval = 1
@@ -174,7 +180,15 @@ func (s *Store) ApplyRecurring(until string) (int, error) {
 	}
 	for _, j := range jobs {
 		r := rules[j.idx]
-		if _, err := s.AddTransaction(r.Account, Transaction{
+		if r.To != "" {
+			amt := r.Amount
+			if amt < 0 {
+				amt = -amt
+			}
+			if _, _, err := s.Transfer(r.Account, r.To, amt, nil, j.date, r.Note); err != nil {
+				return 0, err
+			}
+		} else if _, err := s.AddTransaction(r.Account, Transaction{
 			Date:     j.date,
 			Amount:   r.Amount,
 			Category: r.Category,

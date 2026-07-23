@@ -18,7 +18,7 @@ func recurringCmd() *cobra.Command {
 }
 
 func recurringAddCmd() *cobra.Command {
-	var account, amount, category, note, cadence, start string
+	var account, to, amount, category, note, cadence, start string
 	var interval, day int
 	cmd := &cobra.Command{
 		Use:   "add",
@@ -46,22 +46,42 @@ func recurringAddCmd() *cobra.Command {
 			if start == "" {
 				start = today()
 			}
+			var destName string
+			if to != "" {
+				dst, ok, err := store.Account(to)
+				if err != nil {
+					return err
+				}
+				if !ok {
+					return fmt.Errorf("unknown destination account %q", to)
+				}
+				destName = dst.Name
+				if amt < 0 {
+					amt = -amt // transfers use a positive magnitude
+				}
+			}
 			r, err := store.AddRecurring(ledger.Recurring{
-				Account: acct.Name, Amount: amt, Category: category, Note: note,
+				Account: acct.Name, Amount: amt, Category: category, Note: note, To: destName,
 				Cadence: cadence, Interval: interval, Day: day, Start: start,
 			})
 			if err != nil {
 				return err
 			}
 			commit(c, "add recurring "+r.ID)
-			fmt.Printf("Added recurring %s: %s %s %s from %s (%s)\n",
-				r.ID, r.Cadence, amt.Format(acct.Decimals), acct.Currency, start, acct.Name)
+			if destName != "" {
+				fmt.Printf("Added recurring transfer %s: %s %s %s from %s → %s (%s)\n",
+					r.ID, r.Cadence, amt.Format(acct.Decimals), acct.Currency, acct.Name, destName, start)
+			} else {
+				fmt.Printf("Added recurring %s: %s %s %s from %s (%s)\n",
+					r.ID, r.Cadence, amt.Format(acct.Decimals), acct.Currency, start, acct.Name)
+			}
 			return nil
 		},
 	}
 	f := cmd.Flags()
 	f.StringVar(&account, "account", "", "account (required)")
-	f.StringVar(&amount, "amount", "", "signed amount, e.g. -50 or 5000000 (required)")
+	f.StringVar(&to, "to", "", "destination account — makes this a recurring transfer")
+	f.StringVar(&amount, "amount", "", "signed amount (or positive transfer magnitude with --to) (required)")
 	f.StringVar(&category, "category", "", "category")
 	f.StringVar(&note, "note", "", "note")
 	f.StringVar(&cadence, "cadence", "monthly", "daily | weekly | monthly")
@@ -100,8 +120,12 @@ func recurringListCmd() *cobra.Command {
 				if last == "" {
 					last = "never"
 				}
+				account := r.Account
+				if r.To != "" {
+					account += " → " + r.To // recurring transfer
+				}
 				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d\t%d\t%s\t%s\n",
-					r.ID, r.Account, r.Amount.Format(dec), r.Cadence, r.Interval, r.Day, r.Start, last)
+					r.ID, account, r.Amount.Format(dec), r.Cadence, r.Interval, r.Day, r.Start, last)
 			}
 			return w.Flush()
 		},

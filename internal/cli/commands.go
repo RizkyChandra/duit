@@ -26,8 +26,33 @@ func tw() *tabwriter.Writer {
 
 func accountCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "account", Short: "Manage accounts"}
-	cmd.AddCommand(accountAddCmd(), accountListCmd(), accountRmCmd())
+	cmd.AddCommand(accountAddCmd(), accountListCmd(), accountRmCmd(),
+		accountArchiveCmd("archive", true), accountArchiveCmd("unarchive", false))
 	return cmd
+}
+
+func accountArchiveCmd(use string, archived bool) *cobra.Command {
+	short := "Hide an account from default lists (data retained)"
+	if !archived {
+		short = "Restore an archived account to active"
+	}
+	return &cobra.Command{
+		Use:   use + " <name>",
+		Short: short,
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, store, err := mustCtx()
+			if err != nil {
+				return err
+			}
+			if err := store.SetArchived(args[0], archived); err != nil {
+				return err
+			}
+			commit(c, use+" account "+args[0])
+			fmt.Printf("%sd account %q\n", use, args[0])
+			return nil
+		},
+	}
 }
 
 func accountAddCmd() *cobra.Command {
@@ -65,7 +90,8 @@ func accountAddCmd() *cobra.Command {
 }
 
 func accountListCmd() *cobra.Command {
-	return &cobra.Command{
+	var all bool
+	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List accounts and balances",
 		Args:  cobra.NoArgs,
@@ -85,11 +111,20 @@ func accountListCmd() *cobra.Command {
 			w := tw()
 			fmt.Fprintln(w, "NAME\tTYPE\tCURRENCY\tBALANCE")
 			for _, a := range accts {
-				fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", a.Name, a.Type, a.Currency, a.Balance.Format(a.Decimals))
+				if a.Archived && !all {
+					continue
+				}
+				name := a.Name
+				if a.Archived {
+					name += " (archived)"
+				}
+				fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", name, a.Type, a.Currency, a.Balance.Format(a.Decimals))
 			}
 			return w.Flush()
 		},
 	}
+	cmd.Flags().BoolVar(&all, "all", false, "include archived accounts")
+	return cmd
 }
 
 func accountRmCmd() *cobra.Command {
@@ -291,7 +326,8 @@ func listCmd() *cobra.Command {
 }
 
 func balanceCmd() *cobra.Command {
-	return &cobra.Command{
+	var all bool
+	cmd := &cobra.Command{
 		Use:   "balance [account]",
 		Short: "Show account balance(s)",
 		Args:  cobra.MaximumNArgs(1),
@@ -317,11 +353,20 @@ func balanceCmd() *cobra.Command {
 			}
 			w := tw()
 			for _, a := range accts {
-				fmt.Fprintf(w, "%s\t%s %s\n", a.Name, a.Balance.Format(a.Decimals), a.Currency)
+				if a.Archived && !all {
+					continue
+				}
+				name := a.Name
+				if a.Archived {
+					name += " (archived)"
+				}
+				fmt.Fprintf(w, "%s\t%s %s\n", name, a.Balance.Format(a.Decimals), a.Currency)
 			}
 			return w.Flush()
 		},
 	}
+	cmd.Flags().BoolVar(&all, "all", false, "include archived accounts")
+	return cmd
 }
 
 func summaryCmd() *cobra.Command {

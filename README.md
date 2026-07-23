@@ -51,7 +51,8 @@ duit mcp                        # MCP server over stdio
 | `recompute [acct]` | Rebuild cached balances from transaction files |
 | `budget set\|list\|rm\|status` | Per-category monthly limits; `status` shows spent vs limit (warns on overspend, never blocks) |
 | `category add\|list\|rename\|rm` | Curated category list; `rename` migrates existing transactions, splits, and budgets |
-| `recurring add\|list\|rm\|apply` | Recurring rules; `apply` materializes everything due up to a date (idempotent) |
+| `account add\|list\|rm\|archive\|unarchive` | Manage accounts; archived ones are hidden from `list`/`balance` unless `--all` (data kept, still in net worth) |
+| `recurring add\|list\|rm\|apply` | Recurring rules; `--to <acct>` makes a recurring transfer; `apply` materializes everything due up to a date (idempotent) |
 | `fx set\|list\|rm\|update` | Exchange rates for cross-currency views; `update` pulls from frankfurter.app (ECB) |
 | `networth [--in CODE]` | Total balance across all accounts, converted to one currency |
 | `report [--month] [--in CODE]` / `report trend [--months N]` / `report networth [--months N]` | In-terminal bar charts: category breakdown, monthly expense trend, net-worth-over-time |
@@ -108,6 +109,7 @@ Tracked at [Project #5](https://github.com/users/RizkyChandra/projects/5/views/1
 - [x] v0.5.0 — transfers between accounts · net-worth-over-time (`report networth`) · TUI transfer (`t`) + editable budget/fx screens
 - [x] v0.6.0 — search/filter (`find`) · split transactions (`--split`) · receipts (`attach`/`receipt`) · MCP `find_transactions` + `transfer`
 - [x] v0.7.0 — category management (`category add/list/rename/rm`; rename migrates existing transactions, splits, and budgets)
+- [x] v0.8.0 — recurring transfers (`recurring add --to`) · TUI dashboard (`D`) · account archiving (`account archive`)
 
 ## License
 

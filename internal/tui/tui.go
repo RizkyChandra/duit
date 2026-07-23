@@ -59,6 +59,7 @@ const (
 	screenBudget
 	screenFX
 	screenTransfer
+	screenDashboard
 )
 
 const dateFmt = "2006-01-02"
@@ -80,8 +81,9 @@ type Model struct {
 	status string
 	err    error
 
-	accounts []ledger.Account
-	accCur   int
+	accounts    []ledger.Account // visible (non-archived); indexed by accCur
+	allAccounts []ledger.Account // full list incl. archived, for the dashboard
+	accCur      int
 
 	acct  ledger.Account // selected account
 	month string         // month being viewed (YYYY-MM)
@@ -107,6 +109,9 @@ type Model struct {
 
 	// transfer form
 	transDest int // index into m.accounts of the destination
+
+	// dashboard: prebuilt body, rendered on entry
+	dashboard string
 }
 
 // New builds the root model, loading the account list. Errors are surfaced in
@@ -132,8 +137,14 @@ func (m *Model) reloadAccounts() {
 		m.err = err
 		return
 	}
-	m.accounts = accts
-	if m.accCur >= len(accts) {
+	m.allAccounts = accts
+	m.accounts = m.accounts[:0]
+	for _, a := range accts {
+		if !a.Archived {
+			m.accounts = append(m.accounts, a)
+		}
+	}
+	if m.accCur >= len(m.accounts) {
 		m.accCur = 0
 	}
 }
@@ -256,6 +267,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateBudgetFX(km)
 	case screenTransfer:
 		return m.updateTransfer(km)
+	case screenDashboard:
+		if km.String() == "q" {
+			return m, tea.Quit
+		}
+		if km.String() == "esc" {
+			m.screen = screenAccounts
+		}
+		return m, nil
 	}
 	return m, nil
 }
@@ -283,6 +302,10 @@ func (m Model) updateAccounts(km tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "f":
 		m.rates, m.err = m.store.LoadRates()
 		m.screen = screenFX
+	case "D":
+		m.dashboard = m.buildDashboard()
+		m.status, m.err = "", nil
+		m.screen = screenDashboard
 	case "t":
 		if len(m.accounts) < 2 {
 			m.status = "need at least 2 accounts to transfer"
@@ -581,9 +604,113 @@ func (m Model) View() string {
 		return m.viewFX()
 	case screenTransfer:
 		return m.viewTransfer()
+	case screenDashboard:
+		return headerStyle.Render("Dashboard") + "\n\n" + m.dashboard +
+			"\n" + statusStyle.Render("esc back · q quit") + m.footer()
 	default:
 		return m.viewAccounts()
 	}
+}
+
+// buildDashboard computes the read-only overview once, on entry. All amounts
+// are shown in the target currency (rates.Base, else the first account's).
+// FX-convert failures skip that account/line rather than abort.
+func (m Model) buildDashboard() string {
+	rates, _ := m.store.LoadRates()
+	target := rates.Base
+	if target == "" && len(m.allAccounts) > 0 {
+		target = m.allAccounts[0].Currency
+	}
+	dec := ledger.CurrencyDecimals(target)
+	month := time.Now().Format("2006-01")
+
+	// Net worth includes archived accounts (the money is real).
+	var net ledger.Money
+	for _, a := range m.allAccounts {
+		if v, err := rates.Convert(a.Balance, a.Currency, target); err == nil {
+			net += v
+		}
+	}
+
+	// This month: aggregate lines across all accounts, skipping transfer legs.
+	var income, expense ledger.Money
+	cats := map[string]ledger.Money{}
+	for _, a := range m.allAccounts {
+		txns, err := m.store.Transactions(a.Name, month)
+		if err != nil {
+			continue
+		}
+		for _, t := range txns {
+			if t.Transfer != "" {
+				continue
+			}
+			for _, ln := range t.Lines() {
+				amt := ln.Amount
+				if a.Currency != target {
+					c, err := rates.Convert(amt, a.Currency, target)
+					if err != nil {
+						continue
+					}
+					amt = c
+				}
+				switch {
+				case amt > 0:
+					income += amt
+				case amt < 0:
+					expense += amt
+					cats[ln.Category] -= amt // accumulate positive magnitude
+				}
+			}
+		}
+	}
+
+	lines, _ := m.store.BudgetStatus(month)
+	over := 0
+	var overNames []string
+	for _, b := range lines {
+		if b.Over {
+			over++
+			overNames = append(overNames, b.Category)
+		}
+	}
+
+	// Top expense categories by magnitude.
+	type catMag struct {
+		cat string
+		mag ledger.Money
+	}
+	top := make([]catMag, 0, len(cats))
+	for c, mg := range cats {
+		top = append(top, catMag{c, mg})
+	}
+	sort.Slice(top, func(i, j int) bool { return top[i].mag > top[j].mag })
+	if len(top) > 5 {
+		top = top[:5]
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "Net worth:  %s %s\n\n", net.Format(dec), target)
+	fmt.Fprintf(&b, "This month (%s):\n", month)
+	fmt.Fprintf(&b, "  income   %s\n", income.Format(dec))
+	fmt.Fprintf(&b, "  expense  %s\n", expense.Format(dec))
+	fmt.Fprintf(&b, "  net      %s\n\n", (income + expense).Format(dec))
+	fmt.Fprintf(&b, "Budgets: %d set, %d over", len(lines), over)
+	if over > 0 {
+		fmt.Fprintf(&b, " (%s)", strings.Join(overNames, ", "))
+	}
+	b.WriteString("\n\n")
+	b.WriteString("Top expenses:\n")
+	if len(top) == 0 {
+		b.WriteString("  (none)\n")
+	}
+	for _, tc := range top {
+		cat := tc.cat
+		if cat == "" {
+			cat = "(uncategorized)"
+		}
+		fmt.Fprintf(&b, "  %-16s %s\n", cat, tc.mag.Format(dec))
+	}
+	return b.String()
 }
 
 // promptView renders the inline edit overlay for the budget/fx screens.
@@ -623,7 +750,7 @@ func (m Model) viewAccounts() string {
 		}
 		s += cursor + line + "\n"
 	}
-	s += "\n" + statusStyle.Render("up/down·k/j move · enter open · t transfer · b budget · f fx · q quit")
+	s += "\n" + statusStyle.Render("up/down·k/j move · enter open · t transfer · b budget · f fx · D dashboard · q quit")
 	return s + m.footer()
 }
 
