@@ -3,6 +3,7 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/RizkyChandra/duit/internal/ledger"
@@ -53,6 +54,8 @@ const (
 	screenAccounts screen = iota
 	screenTxns
 	screenForm
+	screenBudget
+	screenFX
 )
 
 const dateFmt = "2006-01-02"
@@ -88,6 +91,11 @@ type Model struct {
 	editing   bool
 	editID    string
 	editMonth string
+
+	// read-only screens
+	budgetMonth string
+	budgets     []ledger.BudgetLine
+	rates       ledger.Rates
 }
 
 // New builds the root model, loading the account list. Errors are surfaced in
@@ -233,6 +241,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateTxns(km)
 	case screenForm:
 		return m.updateForm(km)
+	case screenBudget, screenFX:
+		return m.updateReadonly(km)
 	}
 	return m, nil
 }
@@ -253,6 +263,23 @@ func (m Model) updateAccounts(km tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if len(m.accounts) > 0 {
 			m.openAccount(m.accounts[m.accCur])
 		}
+	case "b":
+		m.budgetMonth = time.Now().Format("2006-01")
+		m.budgets, m.err = m.store.BudgetStatus(m.budgetMonth)
+		m.screen = screenBudget
+	case "f":
+		m.rates, m.err = m.store.LoadRates()
+		m.screen = screenFX
+	}
+	return m, nil
+}
+
+func (m Model) updateReadonly(km tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch km.String() {
+	case "q":
+		return m, tea.Quit
+	case "esc":
+		m.screen = screenAccounts
 	}
 	return m, nil
 }
@@ -355,6 +382,10 @@ func (m Model) View() string {
 		return m.viewTxns()
 	case screenForm:
 		return m.viewForm()
+	case screenBudget:
+		return m.viewBudget()
+	case screenFX:
+		return m.viewFX()
 	default:
 		return m.viewAccounts()
 	}
@@ -374,7 +405,45 @@ func (m Model) viewAccounts() string {
 		}
 		s += cursor + line + "\n"
 	}
-	s += "\n" + statusStyle.Render("up/down·k/j move · enter open · q quit")
+	s += "\n" + statusStyle.Render("up/down·k/j move · enter open · b budget · f fx · q quit")
+	return s + m.footer()
+}
+
+func (m Model) viewBudget() string {
+	dec := ledger.CurrencyDecimals(m.rates.Base) // rates.Base may be empty -> 2
+	s := headerStyle.Render("Budgets — "+m.budgetMonth) + "\n\n"
+	if len(m.budgets) == 0 {
+		s += "  (no budgets set)\n"
+	} else {
+		s += fmt.Sprintf("  %-16s %12s %12s %12s\n", "CATEGORY", "LIMIT", "SPENT", "REMAINING")
+		for _, b := range m.budgets {
+			line := fmt.Sprintf("  %-16s %12s %12s %12s", b.Category,
+				b.Limit.Format(dec), b.Spent.Format(dec), b.Remaining.Format(dec))
+			if b.Over {
+				line = errStyle.Render(line + "  OVER")
+			}
+			s += line + "\n"
+		}
+	}
+	s += "\n" + statusStyle.Render("esc back · q quit")
+	return s + m.footer()
+}
+
+func (m Model) viewFX() string {
+	s := headerStyle.Render("FX rates — base "+m.rates.Base) + "\n\n"
+	if len(m.rates.Rates) == 0 {
+		s += "  (no rates set)\n"
+	} else {
+		codes := make([]string, 0, len(m.rates.Rates))
+		for c := range m.rates.Rates {
+			codes = append(codes, c)
+		}
+		sort.Strings(codes)
+		for _, c := range codes {
+			s += fmt.Sprintf("  1 %s = %g %s\n", m.rates.Base, m.rates.Rates[c], c)
+		}
+	}
+	s += "\n" + statusStyle.Render("esc back · q quit")
 	return s + m.footer()
 }
 

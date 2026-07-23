@@ -53,6 +53,42 @@ func TestEnterOpensTransactions(t *testing.T) {
 	}
 }
 
+func TestBudgetAndFXScreens(t *testing.T) {
+	s := seedStore(t)
+	if err := s.SetBudget("food", 20000); err != nil {
+		t.Fatalf("SetBudget: %v", err)
+	}
+	if err := s.SaveRates(ledger.Rates{Base: "USD", Rates: map[string]float64{"IDR": 16000}}); err != nil {
+		t.Fatalf("SaveRates: %v", err)
+	}
+	m := New(s, nil)
+
+	// Budget screen: `b` from the account list.
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
+	bm := next.(Model)
+	if bm.screen != screenBudget {
+		t.Fatalf("expected budget screen, got %d", bm.screen)
+	}
+	if v := bm.View(); !strings.Contains(v, "food") || !strings.Contains(v, "Budgets") {
+		t.Fatalf("budget view missing content:\n%s", v)
+	}
+	// esc returns to accounts.
+	back, _ := bm.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if back.(Model).screen != screenAccounts {
+		t.Fatalf("esc did not return to accounts")
+	}
+
+	// FX screen: `f` from the account list.
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}})
+	fm := next.(Model)
+	if fm.screen != screenFX {
+		t.Fatalf("expected fx screen, got %d", fm.screen)
+	}
+	if v := fm.View(); !strings.Contains(v, "base USD") || !strings.Contains(v, "IDR") {
+		t.Fatalf("fx view missing content:\n%s", v)
+	}
+}
+
 func TestAddTransactionFlow(t *testing.T) {
 	s := seedStore(t)
 	m := New(s, nil)

@@ -51,6 +51,9 @@ duit mcp                        # MCP server over stdio
 | `recurring add\|list\|rm\|apply` | Recurring rules; `apply` materializes everything due up to a date (idempotent) |
 | `fx set\|list\|rm\|update` | Exchange rates for cross-currency views; `update` pulls from frankfurter.app (ECB) |
 | `networth [--in CODE]` | Total balance across all accounts, converted to one currency |
+| `report [--month] [--in CODE]` / `report trend [--months N]` | In-terminal bar charts: category breakdown + monthly trend |
+| `export [--account] [--from --to] [--out]` | Write transactions to CSV |
+| `import <account> <file>` | Import a CSV (auto-detects date/amount/debit/credit/category headers; `--dry-run`, override flags) |
 | `auth set-token\|migrate` | Manage the GitHub PAT (stored in the OS keychain, falls back to config file) |
 | `sync` | Commit pending + pull + push |
 | `mcp` | Run the MCP stdio server |
@@ -96,6 +99,7 @@ Tracked at [Project #5](https://github.com/users/RizkyChandra/projects/5/views/1
 
 - [x] v0.2.0 — OS-keychain PAT storage · per-category monthly budgets (warn-only) · recurring transactions (explicit `apply`)
 - [x] v0.3.0 — multi-currency conversion (manual rate table + `fx update`), net worth, currency-aware summary/budgets
+- [x] v0.4.0 — CSV import/export · terminal reports (`report`, `report trend`) · TUI budget & fx screens (`b`/`f`)
 
 ## License
 
