@@ -47,6 +47,7 @@ func newRoot(version string) *cobra.Command {
 		summaryCmd(),
 		recomputeCmd(),
 		budgetCmd(),
+		categoryCmd(),
 		recurringCmd(),
 		fxCmd(),
 		networthCmd(),

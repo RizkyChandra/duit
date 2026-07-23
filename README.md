@@ -50,6 +50,7 @@ duit mcp                        # MCP server over stdio
 | `summary [--account] [--month]` | Per-category income/expense/net |
 | `recompute [acct]` | Rebuild cached balances from transaction files |
 | `budget set\|list\|rm\|status` | Per-category monthly limits; `status` shows spent vs limit (warns on overspend, never blocks) |
+| `category add\|list\|rename\|rm` | Curated category list; `rename` migrates existing transactions, splits, and budgets |
 | `recurring add\|list\|rm\|apply` | Recurring rules; `apply` materializes everything due up to a date (idempotent) |
 | `fx set\|list\|rm\|update` | Exchange rates for cross-currency views; `update` pulls from frankfurter.app (ECB) |
 | `networth [--in CODE]` | Total balance across all accounts, converted to one currency |
@@ -106,10 +107,7 @@ Tracked at [Project #5](https://github.com/users/RizkyChandra/projects/5/views/1
 - [x] v0.4.0 — CSV import/export · terminal reports (`report`, `report trend`) · TUI budget & fx screens (`b`/`f`)
 - [x] v0.5.0 — transfers between accounts · net-worth-over-time (`report networth`) · TUI transfer (`t`) + editable budget/fx screens
 - [x] v0.6.0 — search/filter (`find`) · split transactions (`--split`) · receipts (`attach`/`receipt`) · MCP `find_transactions` + `transfer`
-
-### Planned
-
-- **v0.7.0** — category management (`category add/list/rename/rm`, rename migrates existing transactions)
+- [x] v0.7.0 — category management (`category add/list/rename/rm`; rename migrates existing transactions, splits, and budgets)
 
 ## License
 

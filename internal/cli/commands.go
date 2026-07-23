@@ -173,6 +173,7 @@ func signedAddCmd(use string, sign int, short string) *cobra.Command {
 			fmt.Printf("Recorded %s %s (%s). Balance: %s %s\n",
 				amt.Format(acct.Decimals), acct.Currency, t.ID,
 				acct.Balance.Format(acct.Decimals), acct.Currency)
+			warnUnknownCategories(store, affectedCategories(t))
 			if amt < 0 {
 				for _, cat := range affectedCategories(t) {
 					warnOverBudget(store, c, cat, t.Date[:7])
