@@ -7,35 +7,86 @@ syncs to your own GitHub account.
 
 > `duit` — "money" in Malay/Indonesian.
 
-## Status
+## Install
 
-Early development. See the [roadmap board](https://github.com/users/RizkyChandra/projects/5/views/1).
+```sh
+go install github.com/RizkyChandra/duit/cmd/duit@latest
+# or from a clone, with a version stamp:
+go build -ldflags "-X main.version=$(git describe --tags --always)" -o duit ./cmd/duit
+```
 
-- [ ] R0 — Scaffold
-- [ ] R1 — Core ledger (money, models, storage)
-- [ ] R2 — Config + init
-- [ ] R3 — Git sync (go-git, SSH/PAT)
-- [ ] R4 — CLI
-- [ ] R5 — MCP server
-- [ ] R6 — TUI
-- [ ] R7 — Polish
+## Quick start
+
+```sh
+duit init                       # choose data dir, default currency, remote + auth
+duit account add cash --type cash
+duit account add bank --type bank --currency USD
+
+duit income  cash 5000000 --category salary
+duit expense cash 15000   --category food --note lunch
+duit expense bank 12.50   --category fee
+
+duit list cash                  # this month's transactions
+duit balance                    # all account balances
+duit summary --month 2026-07    # income/expense/net per category
+duit sync                       # commit + pull + push to your remote
+
+duit                            # no args → interactive TUI
+duit mcp                        # MCP server over stdio
+```
+
+### Commands
+
+| Command | Purpose |
+|---|---|
+| `init` | Create data dir + git repo + config (data dir, currency, remote, auth) |
+| `account add\|list\|rm` | Manage accounts (`rm` needs `--yes`) |
+| `income \| expense <acct> <amount>` | Record money (positive magnitude; direction by verb) |
+| `add <acct> <amount>` | Signed add (positive = income). For a negative literal use `expense` instead |
+| `list <acct> [--month]` | Transactions for a month |
+| `balance [acct]` | Balance(s) |
+| `summary [--account] [--month]` | Per-category income/expense/net |
+| `recompute [acct]` | Rebuild cached balances from transaction files |
+| `sync` | Commit pending + pull + push |
+| `mcp` | Run the MCP stdio server |
+| `tui` | Interactive TUI (also the default) |
+
+## MCP
+
+`duit mcp` speaks MCP over stdio and exposes: `list_accounts`, `get_balance`,
+`add_transaction`, `list_transactions`, `summary`. Register it with an MCP client, e.g.:
+
+```json
+{ "mcpServers": { "duit": { "command": "duit", "args": ["mcp"] } } }
+```
 
 ## Design
 
-- **Money** is stored as integer minor units (never float).
-- **Storage** is per-account, split one JSON file per month:
+- **Money** is stored as integer minor units (never float); decimals are per-currency
+  (2 for USD, 0 for IDR/JPY).
+- **Storage** is per-account, one JSON file per month:
   ```
-  config.json                    # data dir, default currency, remote, auth
   accounts.json                  # accounts + cached balances
   txns/<account>/<YYYY-MM>.json  # {opening, closing, transactions[]}
   ```
-- **Git** is embedded (go-git); the data dir is a repo pushed to your own remote.
+  Cached balances are derived; `duit recompute` rebuilds them.
+- **Config** lives at `~/.config/duit/config.json` (mode 0600, outside the data repo)
+  so your token is never committed.
+- **Git** is embedded (go-git); the data dir is a repo pushed to your own remote
+  over SSH or a personal access token.
 
-## Build
+## Roadmap
 
-```sh
-go build -o duit ./cmd/duit
-```
+Tracked at [Project #5](https://github.com/users/RizkyChandra/projects/5/views/1).
+
+- [x] R0 — Scaffold
+- [x] R1 — Core ledger (money, models, storage)
+- [x] R2 — Config
+- [x] R3 — Git sync (go-git, SSH/PAT)
+- [x] R4 — CLI
+- [x] R5 — MCP server
+- [x] R6 — TUI
+- [x] R7 — Polish
 
 ## License
 
