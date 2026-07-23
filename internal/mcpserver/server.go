@@ -21,13 +21,16 @@ func Serve(ctx context.Context, store *ledger.Store) error {
 // newServer builds a server with all tools registered. Split out so tests can
 // drive it over an in-memory transport.
 func newServer(store *ledger.Store) *mcp.Server {
-	s := mcp.NewServer(&mcp.Implementation{Name: "duit", Version: "v0.1.0"}, nil)
+	s := mcp.NewServer(&mcp.Implementation{Name: "duit", Version: "v0.2.0"}, nil)
 	h := handlers{store}
 	mcp.AddTool(s, &mcp.Tool{Name: "list_accounts", Description: "List accounts with their balances."}, h.listAccounts)
 	mcp.AddTool(s, &mcp.Tool{Name: "get_balance", Description: "Get an account's balance."}, h.getBalance)
 	mcp.AddTool(s, &mcp.Tool{Name: "add_transaction", Description: "Add a transaction to an account."}, h.addTransaction)
 	mcp.AddTool(s, &mcp.Tool{Name: "list_transactions", Description: "List an account's transactions for a month."}, h.listTransactions)
 	mcp.AddTool(s, &mcp.Tool{Name: "summary", Description: "Per-category income/expense/net for a month."}, h.summary)
+	mcp.AddTool(s, &mcp.Tool{Name: "budget_status", Description: "Per-category budget: spent vs limit for a month."}, h.budgetStatus)
+	mcp.AddTool(s, &mcp.Tool{Name: "list_recurring", Description: "List recurring transaction rules."}, h.listRecurring)
+	mcp.AddTool(s, &mcp.Tool{Name: "apply_recurring", Description: "Materialize recurring rules due up to a date (default today)."}, h.applyRecurring)
 	return s
 }
 

@@ -47,6 +47,9 @@ duit mcp                        # MCP server over stdio
 | `balance [acct]` | Balance(s) |
 | `summary [--account] [--month]` | Per-category income/expense/net |
 | `recompute [acct]` | Rebuild cached balances from transaction files |
+| `budget set\|list\|rm\|status` | Per-category monthly limits; `status` shows spent vs limit (warns on overspend, never blocks) |
+| `recurring add\|list\|rm\|apply` | Recurring rules; `apply` materializes everything due up to a date (idempotent) |
+| `auth set-token\|migrate` | Manage the GitHub PAT (stored in the OS keychain, falls back to config file) |
 | `sync` | Commit pending + pull + push |
 | `mcp` | Run the MCP stdio server |
 | `tui` | Interactive TUI (also the default) |
@@ -54,7 +57,8 @@ duit mcp                        # MCP server over stdio
 ## MCP
 
 `duit mcp` speaks MCP over stdio and exposes: `list_accounts`, `get_balance`,
-`add_transaction`, `list_transactions`, `summary`. Register it with an MCP client, e.g.:
+`add_transaction`, `list_transactions`, `summary`, `budget_status`,
+`list_recurring`, `apply_recurring`. Register it with an MCP client, e.g.:
 
 ```json
 { "mcpServers": { "duit": { "command": "duit", "args": ["mcp"] } } }
@@ -88,9 +92,10 @@ Tracked at [Project #5](https://github.com/users/RizkyChandra/projects/5/views/1
 - [x] R6 — TUI
 - [x] R7 — Polish
 
+- [x] v0.2.0 — OS-keychain PAT storage · per-category monthly budgets (warn-only) · recurring transactions (explicit `apply`)
+
 ### Planned
 
-- **v0.2.0** — OS-keychain PAT storage · per-category monthly budgets (warn-only) · recurring transactions (explicit `apply`)
 - **v0.3.0** — multi-currency conversion (manual rate table + optional `fx update`), net worth, currency-aware summary/budgets
 
 ## License

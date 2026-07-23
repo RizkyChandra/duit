@@ -167,6 +167,9 @@ func signedAddCmd(use string, sign int, short string) *cobra.Command {
 			fmt.Printf("Recorded %s %s (%s). Balance: %s %s\n",
 				amt.Format(acct.Decimals), acct.Currency, t.ID,
 				acct.Balance.Format(acct.Decimals), acct.Currency)
+			if amt < 0 && t.Category != "" {
+				warnOverBudget(store, c, t.Category, t.Date[:7])
+			}
 			return nil
 		},
 	}
@@ -379,7 +382,7 @@ func syncCmd() *cobra.Command {
 			if _, err := gitsync.CommitAll(c.DataDir, "sync"); err != nil {
 				return err
 			}
-			if err := gitsync.Sync(c.DataDir, c.Remote, c.Auth); err != nil {
+			if err := gitsync.Sync(c.DataDir, c.Remote, resolveAuth(c)); err != nil {
 				return err
 			}
 			fmt.Println("Synced with", c.Remote)

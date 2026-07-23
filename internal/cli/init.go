@@ -10,7 +10,6 @@ import (
 	"github.com/RizkyChandra/duit/internal/config"
 	"github.com/RizkyChandra/duit/internal/gitsync"
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 )
 
 func initCmd() *cobra.Command {
@@ -38,6 +37,7 @@ func initCmd() *cobra.Command {
 			}
 
 			var a config.Auth
+			var patToken string
 			if remote != "" {
 				if auth == "" {
 					auth = prompt(r, "Auth method (ssh/pat)", "ssh")
@@ -45,13 +45,10 @@ func initCmd() *cobra.Command {
 				a.Method = strings.ToLower(auth)
 				switch a.Method {
 				case "pat":
-					fmt.Print("GitHub token (input hidden): ")
-					b, err := term.ReadPassword(int(os.Stdin.Fd()))
-					fmt.Println()
+					patToken, err = readSecret(r, "GitHub token (input hidden): ")
 					if err != nil {
 						return err
 					}
-					a.Token = strings.TrimSpace(string(b))
 				case "ssh":
 					a.SSHKey = expandHome(prompt(r, "SSH private key path (empty = ssh-agent)", sshKey))
 				default:
@@ -71,6 +68,11 @@ func initCmd() *cobra.Command {
 			}
 
 			c := &config.Config{DataDir: dataDir, DefaultCurrency: currency, Remote: remote, Auth: a}
+			if patToken != "" {
+				if err := storeToken(c, patToken); err != nil {
+					return err
+				}
+			}
 			p, err := config.DefaultPath()
 			if err != nil {
 				return err

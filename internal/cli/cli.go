@@ -44,6 +44,9 @@ func newRoot(version string) *cobra.Command {
 		balanceCmd(),
 		summaryCmd(),
 		recomputeCmd(),
+		budgetCmd(),
+		recurringCmd(),
+		authCmd(),
 		syncCmd(),
 		mcpCmd(),
 		tuiCmd(),
@@ -84,7 +87,7 @@ func runTUI() error {
 		if _, err := gitsync.CommitAll(c.DataDir, "sync via tui"); err != nil {
 			return err
 		}
-		return gitsync.Sync(c.DataDir, c.Remote, c.Auth)
+		return gitsync.Sync(c.DataDir, c.Remote, resolveAuth(c))
 	})
 }
 
